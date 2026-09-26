@@ -248,6 +248,7 @@ function normalizeLauncherNews(data) {
             badge,
             title,
             titleHighlight,
+            version,
             paragraphs: fallback.paragraphs
         };
     }

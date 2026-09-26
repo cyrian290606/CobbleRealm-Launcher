@@ -2447,7 +2447,11 @@ const FALLBACK_NEWS = {
         badge: "📣 MISE À JOUR V4",
         title: "Bienvenue sur",
         titleHighlight: "CobbleRealm",
-        version: "V4",
+        version: "V5",
+        paragraphs: [
+            [
+                { text: "Découvrez la ", className: "" },
+                { text: "V5", className: "cyan" },
                 { text: " avec une ", className: "" },
                 { text: "refonte complète des raids", className: "cyan" },
                 { text: ", ", className: "" },
@@ -2499,11 +2503,25 @@ const FALLBACK_NEWS = {
             return;
         }
 
-        const safeNews = news || FALLBACK_NEWS;
-        const badgeText = safeNews.badge || FALLBACK_NEWS.badge;
-        const titleText = safeNews.title || FALLBACK_NEWS.title;
-        const titleHighlight = safeNews.titleHighlight || FALLBACK_NEWS.titleHighlight;
-        const versionText = safeNews.version || FALLBACK_NEWS.version || "V4";
+        const safeNews = news && typeof news === "object"
+            ? news
+            : FALLBACK_NEWS;
+
+        const badgeText = typeof safeNews.badge === "string" && safeNews.badge.trim().length > 0
+            ? safeNews.badge
+            : FALLBACK_NEWS.badge;
+
+        const titleText = typeof safeNews.title === "string" && safeNews.title.trim().length > 0
+            ? safeNews.title
+            : FALLBACK_NEWS.title;
+
+        const titleHighlight = typeof safeNews.titleHighlight === "string" && safeNews.titleHighlight.trim().length > 0
+            ? safeNews.titleHighlight
+            : FALLBACK_NEWS.titleHighlight;
+
+        const versionText = typeof safeNews.version === "string" && safeNews.version.trim().length > 0
+            ? safeNews.version
+            : FALLBACK_NEWS.version;
 
         if (versionBadge) {
             versionBadge.textContent = `★ CobbleRealm ${versionText}`;
