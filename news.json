@@ -1,0 +1,22 @@
+{
+  "badge": "📣 MISE À JOUR V5",
+  "title": "Bienvenue sur",
+  "titleHighlight": "CobbleRealm",
+  "paragraphs": [
+    [
+      { "text": "Découvrez la ", "className": "" },
+      { "text": "V5", "className": "cyan" },
+      { "text": " avec une ", "className": "" },
+      { "text": "refonte complète des raids", "className": "cyan" },
+      { "text": ", ", "className": "" },
+      { "text": "Cobblemon Expeditions", "className": "purple" },
+      { "text": ", de nouvelles ", "className": "" },
+      { "text": "montures Pokémon", "className": "orange" },
+      { "text": ", plus d'informations dans ", "className": "" },
+      { "text": "EMI", "className": "green" },
+      { "text": " et plusieurs ", "className": "" },
+      { "text": "améliorations visuelles", "className": "purple" },
+      { "text": ".", "className": "" }
+    ]
+  ]
+}
