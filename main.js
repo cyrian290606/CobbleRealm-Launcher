@@ -146,6 +146,7 @@ function getDefaultLauncherNews() {
         badge: "📣 MISE À JOUR V4",
         title: "Bienvenue sur",
         titleHighlight: "CobbleRealm",
+        version: "V4",
         paragraphs: [
             [
                 { text: "Découvrez la ", className: "" },
@@ -192,6 +193,11 @@ function normalizeLauncherNews(data) {
                     ? data.highlight.trim()
                     : fallback.titleHighlight
             );
+
+    const version =
+        typeof data.version === "string" && data.version.trim().length > 0
+            ? data.version.trim()
+            : fallback.version;
 
     const sourceParagraphs = Array.isArray(data.paragraphs)
         ? data.paragraphs
@@ -250,6 +256,7 @@ function normalizeLauncherNews(data) {
         badge,
         title,
         titleHighlight,
+        version,
         paragraphs
     };
 }

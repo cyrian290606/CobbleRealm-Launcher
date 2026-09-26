@@ -1306,7 +1306,7 @@
                 </span>
 
 
-                <span class="version realm">
+                <span class="version realm" id="newsVersionBadge">
                     ★ CobbleRealm V4
                 </span>
 
@@ -2447,10 +2447,7 @@ const FALLBACK_NEWS = {
         badge: "📣 MISE À JOUR V4",
         title: "Bienvenue sur",
         titleHighlight: "CobbleRealm",
-        paragraphs: [
-            [
-                { text: "Découvrez la ", className: "" },
-                { text: "V4", className: "cyan" },
+        version: "V4",
                 { text: " avec une ", className: "" },
                 { text: "refonte complète des raids", className: "cyan" },
                 { text: ", ", className: "" },
@@ -2496,6 +2493,7 @@ const FALLBACK_NEWS = {
 
     function renderNews(news) {
         const card = document.getElementById("updateCard");
+        const versionBadge = document.getElementById("newsVersionBadge");
 
         if (!card) {
             return;
@@ -2505,6 +2503,11 @@ const FALLBACK_NEWS = {
         const badgeText = safeNews.badge || FALLBACK_NEWS.badge;
         const titleText = safeNews.title || FALLBACK_NEWS.title;
         const titleHighlight = safeNews.titleHighlight || FALLBACK_NEWS.titleHighlight;
+        const versionText = safeNews.version || FALLBACK_NEWS.version || "V4";
+
+        if (versionBadge) {
+            versionBadge.textContent = `★ CobbleRealm ${versionText}`;
+        }
 
         card.textContent = "";
 
