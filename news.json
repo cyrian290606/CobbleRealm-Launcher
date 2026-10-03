@@ -1,18 +1,24 @@
 {
-  "badge": "📣 MISE À JOUR V5.1",
+  "badge": "📣 MISE À JOUR V6",
   "title": "Bienvenue sur",
   "titleHighlight": "CobbleRealm",
-  "version": "V5.1",
+  "version": "V6",
   "paragraphs": [
     [
       { "text": "La ", "className": "" },
-      { "text": "V5.1", "className": "cyan" },
-      { "text": " apporte une ", "className": "" },
-      { "text": "refonte des récompenses des RAD Gyms", "className": "purple" },
-      { "text": ". Les récompenses ont été ", "className": "" },
-      { "text": "rééquilibrées", "className": "cyan" },
-      { "text": " afin de mieux correspondre au ", "className": "" },
-      { "text": "niveau de chaque arène", "className": "orange" },
+      { "text": "V6", "className": "cyan" },
+      { "text": " introduit les ", "className": "" },
+      { "text": "Baby Legends", "className": "purple" },
+      { "text": " ainsi que le ", "className": "" },
+      { "text": "TCG Pokémon", "className": "orange" },
+      { "text": " avec ", "className": "" },
+      { "text": "41 collections", "className": "green" },
+      { "text": " et plus de ", "className": "" },
+      { "text": "8 300 cartes", "className": "green" },
+      { "text": " à collectionner ! Découvrez de nouveaux ", "className": "" },
+      { "text": "boosters, bundles et classeurs", "className": "orange" },
+      { "text": " avec un système de ", "className": "" },
+      { "text": "raretés rééquilibré", "className": "purple" },
       { "text": ".", "className": "" }
     ]
   ]
