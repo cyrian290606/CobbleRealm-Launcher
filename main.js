@@ -9,6 +9,7 @@ const {
 const path = require("path");
 const fs = require("fs");
 const extract = require("extract-zip");
+const AdmZip = require("adm-zip");
 
 const {
     Client
@@ -382,7 +383,8 @@ async function checkCobbleRealmUpdate() {
 
 async function downloadCobbleRealmPack(
     url,
-    destination
+    destination,
+    onProgress = null
 ) {
 
     console.log(
@@ -457,16 +459,20 @@ async function downloadCobbleRealmPack(
 
                 if (percent !== lastPercent) {
 
-                    lastPercent = percent;
+    lastPercent = percent;
 
-                    console.log(
-                        `[CobbleRealm] Téléchargement : ${percent}%`
-                    );
-                }
-            }
-        }
+    console.log(
+        `[CobbleRealm] Téléchargement : ${percent}%`
+    );
 
-        await new Promise(
+    if (typeof onProgress === "function") {
+        onProgress(percent);
+    }
+}
+}
+}
+
+await new Promise(
             (resolve, reject) => {
 
                 fileStream.end(
@@ -521,6 +527,7 @@ async function downloadLatestCobbleRealmPack(
     }
 
     const zipPaths = [];
+const totalParts = manifest.downloads.length;
 
     for (let i = 0; i < manifest.downloads.length; i++) {
 
@@ -541,9 +548,24 @@ async function downloadLatestCobbleRealmPack(
         );
 
         await downloadCobbleRealmPack(
-            manifest.downloads[i],
-            tempZipPath
+    manifest.downloads[i],
+    tempZipPath,
+    (partPercent) => {
+
+        const globalPercent =
+            Math.floor(
+                (
+                    (i * 100) +
+                    partPercent
+                ) / totalParts
+            );
+
+        sendLauncherUpdateStatus(
+            "download-progress",
+            `${globalPercent}%`
         );
+    }
+);
 
         zipPaths.push(tempZipPath);
     }
@@ -720,22 +742,67 @@ async function extractCobbleRealmPack(
 
 
     // ==============================
-    // EXTRACTION DES PARTIES
-    // ==============================
+// EXTRACTION DES PARTIES
+// ==============================
 
-    for (let i = 0; i < zipPaths.length; i++) {
+const zipArchives =
+    zipPaths.map(
+        zipPath => new AdmZip(zipPath)
+    );
 
-        console.log(
-            `[CobbleRealm] Installation partie ${i + 1}/${zipPaths.length}...`
+const totalEntries =
+    zipArchives.reduce(
+        (total, archive) =>
+            total + archive.getEntries().length,
+        0
+    );
+
+let extractedEntries = 0;
+let lastInstallPercent = -1;
+
+for (let i = 0; i < zipArchives.length; i++) {
+
+    const archive = zipArchives[i];
+    const entries = archive.getEntries();
+
+    console.log(
+        `[CobbleRealm] Installation partie ${i + 1}/${zipArchives.length}...`
+    );
+
+    for (const entry of entries) {
+
+        archive.extractEntryTo(
+            entry,
+            gameRoot,
+            true,
+            true
         );
 
-        await extract(
-            zipPaths[i],
-            {
-                dir: gameRoot
-            }
-        );
+        extractedEntries++;
+
+        const installPercent =
+            Math.min(
+                100,
+                Math.floor(
+                    (extractedEntries / totalEntries) * 100
+                )
+            );
+
+        if (installPercent !== lastInstallPercent) {
+
+            lastInstallPercent = installPercent;
+
+            console.log(
+                `[CobbleRealm] Installation : ${installPercent}%`
+            );
+
+            sendLauncherUpdateStatus(
+                "install-progress",
+                `${installPercent}%`
+            );
+        }
     }
+}
 
 
     // ==============================
