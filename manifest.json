@@ -1,6 +1,8 @@
 {
   "version": "6",
   "minecraftVersion": "1.21.1",
-  "download": "https://drive.google.com/file/d/19QhXmBwE01KQXsMO8eZYuCDE9stXUbUW/view?usp=sharing",
-  "télécharger": "https://drive.google.com/file/d/19QhXmBwE01KQXsMO8eZYuCDE9stXUbUW/view?usp=sharing"
+  "downloads": [
+    "https://github.com/cyrian290606/CobbleRealm-Launcher/releases/download/v6/CobbleRealm-V6-Part1.zip",
+    "https://github.com/cyrian290606/CobbleRealm-Launcher/releases/download/v6/CobbleRealm-V6-Part2.zip"
+  ]
 }
