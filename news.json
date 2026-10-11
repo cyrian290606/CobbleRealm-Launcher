@@ -1,25 +1,24 @@
+
 {
-  "badge": "📣 MISE À JOUR V6",
+  "badge": "📢 MISE À JOUR V7",
   "title": "Bienvenue sur",
   "titleHighlight": "CobbleRealm",
-  "version": "V6",
+  "version": "V7",
   "paragraphs": [
     [
       { "text": "La ", "className": "" },
-      { "text": "V6", "className": "cyan" },
-      { "text": " introduit les ", "className": "" },
-      { "text": "Baby Legends", "className": "purple" },
-      { "text": " ainsi que le ", "className": "" },
-      { "text": "TCG Pokémon", "className": "orange" },
-      { "text": " avec ", "className": "" },
-      { "text": "41 collections", "className": "green" },
-      { "text": " et plus de ", "className": "" },
-      { "text": "8 300 cartes", "className": "green" },
-      { "text": " à collectionner ! Découvrez de nouveaux ", "className": "" },
-      { "text": "boosters, bundles et classeurs", "className": "orange" },
-      { "text": " avec un système de ", "className": "" },
-      { "text": "raretés rééquilibré", "className": "purple" },
-      { "text": ".", "className": "" }
+      { "text": "V7", "className": "cyan" },
+      { "text": " marque une nouvelle étape dans votre aventure avec l'arrivée d'un ", "className": "" },
+      { "text": "Battle Pass inédit", "className": "purple" },
+      { "text": " et de ", "className": "" },
+      { "text": "nouvelles formes de Pokémon", "className": "orange" },
+      { "text": " à découvrir. Tentez votre chance grâce à une ", "className": "" },
+      { "text": "nouvelle expérience au casino", "className": "green" },
+      { "text": ", partez explorer des ", "className": "" },
+      { "text": "structures inédites réparties à travers plusieurs dimensions", "className": "cyan" },
+      { "text": " et profitez de ", "className": "" },
+      { "text": "nombreuses corrections visuelles", "className": "purple" },
+      { "text": " pour redécouvrir vos Pokémon sous leur meilleur jour !", "className": "" }
     ]
   ]
 }
