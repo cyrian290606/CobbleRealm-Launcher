@@ -1,8 +1,8 @@
 {
-  "version": "8.1",
+  "version": "9",
   "minecraftVersion": "1.21.1",
   "downloads": [
-    "https://github.com/cyrian290606/CobbleRealm-Launcher/releases/download/v8.1/CobbleRealm-V8.1-Part1.zip",
-    "https://github.com/cyrian290606/CobbleRealm-Launcher/releases/download/v8.1/CobbleRealm-V8.1-Part2.zip"
+    "https://github.com/cyrian290606/CobbleRealm-Launcher/releases/download/v9/resourcepacks-v9part1.zip",
+    "https://github.com/cyrian290606/CobbleRealm-Launcher/releases/download/v9/default.cobblerealmpart2.zip"
   ]
 }
