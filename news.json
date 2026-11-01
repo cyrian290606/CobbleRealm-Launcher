@@ -1,22 +1,22 @@
 
 {
   "badge": "📢 MISE À JOUR V10",
-  "titre": "Bienvenue sur",
-  "titreÀ mettre en avant": "CobbleRealm",
+  "title": "Bienvenue sur",
+  "titleHighlight": "CobbleRealm",
   "version": "V10",
-  "paragraphes": [
+  "paragraphs": [
     [
-      {"texte": "La ", "className": ""},
-      {"texte": "V10", "className": "cyan"},
-      {"texte": " débarque sur CobbleRealm avec de nombreuses nouveautés ! Découvrez ", "className": ""},
-      {"texte": "un nouveau mod et de nouvelles animations pour le casino", "className": "vert"},
-      {"texte": ", ainsi que l'arrivée des ", "className": ""},
-      {"texte": "combats Pokémon en 2v2 et du mode Ranked", "className": "orange"},
-      {"texte": " pour affronter les autres joueurs. Profitez également de ", "className": ""},
-      {"texte": "nombreuses nouvelles textures", "className": "violet"},
-      {"texte": " et partez relever les défis d'une ", "className": ""},
-      {"texte": "toute nouvelle Tour de Combat", "className": "cyan"},
-      {"texte": " !", "className": ""}
+      {"text": "La ", "className": ""},
+      {"text": "V10", "className": "cyan"},
+      {"text": " débarque sur CobbleRealm avec de nombreuses nouveautés ! Découvrez ", "className": ""},
+      {"text": "un nouveau mod et de nouvelles animations pour le casino", "className": "green"},
+      {"text": ", ainsi que l'arrivée des ", "className": ""},
+      {"text": "combats Pokémon en 2v2 et du mode Classé", "className": "orange"},
+      {"text": " pour affronter les autres joueurs. Profitez également de ", "className": ""},
+      {"text": "nombreuses nouvelles textures", "className": "purple"},
+      {"text": " et partez relever les défis d'une ", "className": ""},
+      {"text": "toute nouvelle Tour de Combat", "className": "cyan"},
+      {"text": " !", "className": ""}
     ]
   ]
 }
