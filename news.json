@@ -1,24 +1,22 @@
 
 {
-  "badge": "📢 MISE À JOUR V7",
-  "title": "Bienvenue sur",
-  "titleHighlight": "CobbleRealm",
-  "version": "V7",
-  "paragraphs": [
+  "badge": "📢 MISE À JOUR V10",
+  "titre": "Bienvenue sur",
+  "titreÀ mettre en avant": "CobbleRealm",
+  "version": "V10",
+  "paragraphes": [
     [
-      { "text": "La ", "className": "" },
-      { "text": "V7", "className": "cyan" },
-      { "text": " marque une nouvelle étape dans votre aventure avec l'arrivée d'un ", "className": "" },
-      { "text": "Battle Pass inédit", "className": "purple" },
-      { "text": " et de ", "className": "" },
-      { "text": "nouvelles formes de Pokémon", "className": "orange" },
-      { "text": " à découvrir. Tentez votre chance grâce à une ", "className": "" },
-      { "text": "nouvelle expérience au casino", "className": "green" },
-      { "text": ", partez explorer des ", "className": "" },
-      { "text": "structures inédites réparties à travers plusieurs dimensions", "className": "cyan" },
-      { "text": " et profitez de ", "className": "" },
-      { "text": "nombreuses corrections visuelles", "className": "purple" },
-      { "text": " pour redécouvrir vos Pokémon sous leur meilleur jour !", "className": "" }
+      {"texte": "La ", "className": ""},
+      {"texte": "V10", "className": "cyan"},
+      {"texte": " débarque sur CobbleRealm avec de nombreuses nouveautés ! Découvrez ", "className": ""},
+      {"texte": "un nouveau mod et de nouvelles animations pour le casino", "className": "vert"},
+      {"texte": ", ainsi que l'arrivée des ", "className": ""},
+      {"texte": "combats Pokémon en 2v2 et du mode Ranked", "className": "orange"},
+      {"texte": " pour affronter les autres joueurs. Profitez également de ", "className": ""},
+      {"texte": "nombreuses nouvelles textures", "className": "violet"},
+      {"texte": " et partez relever les défis d'une ", "className": ""},
+      {"texte": "toute nouvelle Tour de Combat", "className": "cyan"},
+      {"texte": " !", "className": ""}
     ]
   ]
 }
