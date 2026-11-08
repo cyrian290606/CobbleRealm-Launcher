@@ -10,6 +10,15 @@
         content="width=device-width, initial-scale=1.0"
     >
 
+    <!--
+        Politique de sécurité : aucun script ni contenu externe, aucune connexion réseau
+        depuis la page (tout passe par le processus principal).
+    -->
+    <meta
+        http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' file: data:; font-src file: data:; media-src file: data:"
+    >
+
     <title>CobbleRealm Launcher</title>
 
 
@@ -1272,6 +1281,32 @@
     0%
 </div>
 
+<!-- Progression de la mise à jour du modpack -->
+<div id="updateBarWrap" hidden style="margin: 8px 0 0 21px; max-width: 360px;">
+    <div style="height: 6px; border-radius: 3px; background: rgba(255,255,255,0.14); overflow: hidden;">
+        <div id="updateBar" style="height: 100%; width: 0%; background: #63e7ff; transition: width 0.15s;"></div>
+    </div>
+    <div id="updateDetail" style="margin-top: 5px; font-size: 12px; opacity: 0.85; word-break: break-all;"></div>
+</div>
+
+<!-- Avertissement (hors-ligne) -->
+<div id="updateWarning" hidden style="margin: 8px 0 0 21px; max-width: 360px; font-size: 13px; color: #ffd37a;"></div>
+
+<!-- Erreur lisible + actions -->
+<div id="updateErrorBox" hidden role="alert" style="margin: 10px 0 0 21px; max-width: 380px; padding: 10px 12px; border: 1px solid rgba(255,120,120,0.55); border-radius: 10px; background: rgba(90,10,10,0.40); font-size: 13px; line-height: 1.4;">
+    <div id="updateErrorText"></div>
+    <div style="margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap;">
+        <button class="top-button" id="retryButton" style="height: 34px; padding: 0 14px; font-size: 13px; background: rgba(99,231,255,0.20);">Réessayer</button>
+        <button class="top-button" id="repairButton" hidden style="height: 34px; padding: 0 14px; font-size: 13px; background: rgba(255,255,255,0.12);">Réparer l'installation</button>
+    </div>
+</div>
+
+<!-- Mise à jour du launcher lui-même -->
+<div id="selfUpdateBox" hidden style="margin: 10px 0 0 21px; max-width: 380px; font-size: 13px; color: #9dffb0;">
+    <span id="selfUpdateText"></span>
+    <button class="top-button" id="selfUpdateButton" hidden style="height: 30px; padding: 0 12px; font-size: 12px; margin-left: 8px; background: rgba(120,255,160,0.20);">Redémarrer</button>
+</div>
+
             </div>
 
 
@@ -2107,6 +2142,187 @@ if (data.status === "install-progress") {
 
 
 /* =========================
+   MISE À JOUR DU MODPACK
+   (progression, erreurs, réparation)
+========================== */
+
+const updateBarWrap = document.getElementById("updateBarWrap");
+const updateBar = document.getElementById("updateBar");
+const updateDetail = document.getElementById("updateDetail");
+const updateWarning = document.getElementById("updateWarning");
+const updateErrorBox = document.getElementById("updateErrorBox");
+const updateErrorText = document.getElementById("updateErrorText");
+const retryButton = document.getElementById("retryButton");
+const repairButton = document.getElementById("repairButton");
+const selfUpdateBox = document.getElementById("selfUpdateBox");
+const selfUpdateText = document.getElementById("selfUpdateText");
+const selfUpdateButton = document.getElementById("selfUpdateButton");
+
+function formatBytes(bytes) {
+
+    if (bytes >= 1024 ** 3) {
+        return (bytes / 1024 ** 3).toFixed(2) + " Go";
+    }
+
+    if (bytes >= 1024 ** 2) {
+        return (bytes / 1024 ** 2).toFixed(1) + " Mo";
+    }
+
+    return Math.max(1, Math.round(bytes / 1024)) + " Ko";
+}
+
+function resetUpdateUi() {
+
+    updateBarWrap.hidden = true;
+    updateBar.style.width = "0%";
+    updateDetail.textContent = "";
+    updateErrorBox.hidden = true;
+    updateWarning.hidden = true;
+}
+
+if (window.cobbleRealm && window.cobbleRealm.onUpdateProgress) {
+
+    window.cobbleRealm.onUpdateProgress((e) => {
+
+        if (!e) {
+            return;
+        }
+
+        if (e.step === "scan") {
+
+            launcherUpdateStatus.textContent =
+                "Vérification des fichiers... " + (e.percent || 0) + "%";
+
+            return;
+        }
+
+        if (e.step === "plan") {
+
+            launcherUpdateStatus.textContent = e.message;
+
+            return;
+        }
+
+        if (e.step === "download") {
+
+            updateBarWrap.hidden = false;
+            updateBar.style.width = (e.percent || 0) + "%";
+
+            launcherUpdateStatus.textContent =
+                "Téléchargement... " + (e.percent || 0) + "%";
+
+            updateDetail.textContent =
+                (e.file ? e.file + " — " : "") +
+                e.filesDone + "/" + e.filesTotal + " fichiers — " +
+                formatBytes(e.bytesDone) + " / " + formatBytes(e.bytesTotal) +
+                (e.speed > 0 ? " — " + formatBytes(e.speed) + "/s" : "");
+
+            return;
+        }
+
+        if (e.step === "apply") {
+
+            updateBar.style.width = "100%";
+            launcherUpdateStatus.textContent = "Installation...";
+
+            return;
+        }
+
+        if (e.step === "done") {
+
+            updateBarWrap.hidden = true;
+        }
+    });
+}
+
+if (window.cobbleRealm && window.cobbleRealm.onUpdateError) {
+
+    window.cobbleRealm.onUpdateError((err) => {
+
+        updateBarWrap.hidden = true;
+        updateErrorText.textContent = (err && err.message) || "Erreur de mise à jour.";
+        repairButton.hidden = !(err && err.canRepair);
+        updateErrorBox.hidden = false;
+        launcherUpdateStatus.textContent = "Mise à jour impossible";
+    });
+}
+
+if (window.cobbleRealm && window.cobbleRealm.onUpdateWarning) {
+
+    window.cobbleRealm.onUpdateWarning((w) => {
+
+        updateWarning.textContent = (w && w.message) || "";
+        updateWarning.hidden = !updateWarning.textContent;
+    });
+}
+
+retryButton.addEventListener("click", () => {
+
+    updateErrorBox.hidden = true;
+    playButton.click();
+});
+
+repairButton.addEventListener("click", async () => {
+
+    updateErrorBox.hidden = true;
+    minecraftLaunching = true;
+    setPlayState("RÉPARATION...", "⏳", true);
+
+    try {
+
+        const result = await window.cobbleRealm.repairInstallation();
+
+        if (result && result.success) {
+
+            updateWarning.textContent = "Installation réparée. Tu peux jouer.";
+            updateWarning.hidden = false;
+
+        }
+        /* En cas d'échec, l'événement update-error réaffiche l'erreur. */
+
+    } catch (error) {
+
+        updateErrorText.textContent = "La réparation a échoué. Réessaie.";
+        updateErrorBox.hidden = false;
+
+    } finally {
+
+        minecraftLaunching = false;
+        setPlayState("JOUER", "▶", false);
+    }
+});
+
+if (window.cobbleRealm && window.cobbleRealm.onLauncherSelfUpdate) {
+
+    window.cobbleRealm.onLauncherSelfUpdate((info) => {
+
+        selfUpdateBox.hidden = false;
+
+        if (info && info.state === "ready") {
+
+            selfUpdateText.textContent =
+                "Nouvelle version du launcher prête (v" + info.version + ").";
+            selfUpdateButton.hidden = false;
+
+        } else {
+
+            selfUpdateText.textContent =
+                "Mise à jour du launcher en cours (v" + (info && info.version) + ")...";
+        }
+    });
+
+    selfUpdateButton.addEventListener("click", async () => {
+
+        const result = await window.cobbleRealm.installLauncherUpdate();
+
+        if (result && !result.success) {
+            selfUpdateText.textContent = result.error;
+        }
+    });
+}
+
+
+/* =========================
    STATUT MINECRAFT
 ========================== */
 
@@ -2243,6 +2459,8 @@ playButton.addEventListener(
 }
 
         minecraftLaunching = true;
+
+        resetUpdateUi();
 
         setPlayState(
             "PRÉPARATION...",
@@ -2678,23 +2896,11 @@ const FALLBACK_NEWS = {
                 await window.cobbleRealm
                     .checkCobbleRealmUpdate();
 
-            if (
-                result &&
-                result.success
-            ) {
+            /* Le texte vient du processus principal : même module et même requête que la mise à jour. */
+            if (result && result.message) {
 
-                if (
-                    result.updateAvailable
-                ) {
-
-                    statusElement.textContent =
-                        `Mise à jour disponible — v${result.remoteVersion}`;
-
-                } else {
-
-                    statusElement.textContent =
-                        `CobbleRealm à jour — v${result.localVersion}`;
-                }
+                statusElement.textContent =
+                    result.message;
 
             } else {
 

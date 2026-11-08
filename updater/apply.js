@@ -114,7 +114,7 @@ function applyPlan({ plan, manifest, gameRoot, stagingDir, hooks = {}, now = Dat
         const stamp = new Date(now).toISOString().replace(/[:.]/g, "-");
         const quarantined = [];
 
-        for (const rel of [...plan.toRemove, ...plan.strictRemovals]) {
+        for (const rel of [...plan.toRemove, ...plan.strictRemovals, ...(plan.explicitRemovals || [])]) {
             try {
                 moveToQuarantine(gameRoot, rel, stamp);
                 quarantined.push(rel);
@@ -129,6 +129,7 @@ function applyPlan({ plan, manifest, gameRoot, stagingDir, hooks = {}, now = Dat
             minecraft: manifest.minecraft,
             fabricLoader: manifest.fabricLoader,
             java: manifest.java,
+            recommendedRamGb: manifest.recommendedRamGb,
             installedAt: new Date(now).toISOString(),
             files: records
         });

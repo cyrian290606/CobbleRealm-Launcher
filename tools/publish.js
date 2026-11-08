@@ -281,6 +281,7 @@ async function buildManifest(options) {
         recommendedRamGb: Number(options.recommendedRamGb || policy.recommendedRamGb),
         published: new Date().toISOString(),
         strictDirs: policy.strictDirs || [],
+        remove: policy.remove || [],
         preserved: compiled.filter((r) => r.policy === "preserved").map((r) => r.pattern),
         files
     };
@@ -338,6 +339,13 @@ function validateManifest(manifest, { allowEmptyMods = false } = {}) {
                 errors.push(`${f.path} : URL invalide`);
             }
         }
+    }
+
+    for (const rel of manifest.remove || []) {
+
+        const problem = validateRelPath(rel);
+        if (problem) errors.push(`remove : ${rel} : ${problem}`);
+        else if (seen.has(rel.toLowerCase())) errors.push(`remove : ${rel} est aussi publié dans les fichiers`);
     }
 
     for (const dir of manifest.strictDirs || []) {

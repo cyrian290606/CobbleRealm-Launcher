@@ -282,7 +282,7 @@ test("Réparation : fichier manquant, taille modifiée, contenu altéré à tail
     const altered = Buffer.from(original); altered[10] ^= 0xff;
     fs.writeFileSync(a, altered);                                            // même taille, contenu différent
     fs.utimesSync(a, before.atime, before.mtime);                            // ... et même date : invisible sans rehash
-    assert.strictEqual(Math.floor(fs.statSync(a).mtimeMs), Math.floor(before.mtimeMs), "préparation du test");
+    assert.ok(Math.abs(fs.statSync(a).mtimeMs - before.mtimeMs) < 1, "préparation du test");
 
     env.resetRequests();
     const normal = await env.updater().sync();
@@ -424,6 +424,30 @@ test("Fichier 'default' absent : copié ; présent : jamais écrasé", () => wit
     await env.updater().sync();
     assert.strictEqual(read(path.join(env.root, "servers.dat")), "serveur-par-defaut");
     assert.strictEqual(read(path.join(env.root, "options.txt")), "joueur");
+}));
+
+test("Liste 'remove' : seuls les fichiers exacts listés sont mis en quarantaine", () => withEnv(async (env) => {
+    const m = env.publish({ "mods/a.jar": blob("A1"), "mods/b.jar": blob("B1") }, "1.0.0");
+    m.remove = ["mods/doublon-1.0.jar", "mods/ancien.jar.disabled", "mods/absent.jar"];
+
+    const w = (rel, c) => fs.writeFileSync(path.join(env.root, rel), c);
+    fs.mkdirSync(path.join(env.root, "mods"), { recursive: true });
+    w("mods/doublon-1.0.jar", "d"); w("mods/ancien.jar.disabled", "o");
+    w("mods/perso.jar.disabled", "personnel");       // pas dans la liste : intact
+
+    const r = await env.updater().sync();
+    assert.ok(r.ok);
+    assert.ok(!exists(path.join(env.root, "mods/doublon-1.0.jar")));
+    assert.ok(!exists(path.join(env.root, "mods/ancien.jar.disabled")));
+    assert.strictEqual(read(path.join(env.root, "mods/perso.jar.disabled")), "personnel");
+    const dir = fs.readdirSync(path.join(env.root, ".removed"))[0];
+    assert.ok(exists(path.join(env.root, ".removed", dir, "mods/ancien.jar.disabled")), "récupérable");
+
+    // une liste 'remove' hostile est refusée
+    const bad = { ...m, remove: ["../hors-du-jeu.dll"] };
+    assert.throws(() => validateManifest(bad, { allowLocal: true }), (e) => e.code === "MANIFEST_INVALID");
+    const clash = { ...m, remove: ["mods/a.jar"] };
+    assert.throws(() => validateManifest(clash, { allowLocal: true }), (e) => e.code === "MANIFEST_INVALID");
 }));
 
 /* ---------------- exécution ---------------- */

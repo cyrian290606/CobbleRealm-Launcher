@@ -85,6 +85,19 @@ function validateManifest(manifest, { allowLocal = false } = {}) {
     const strictDirs = manifest.strictDirs === undefined ? [] : manifest.strictDirs;
     if (!Array.isArray(strictDirs) || strictDirs.some((d) => typeof d !== "string" || validateRelPath(d))) add("strictDirs invalide");
 
+    const publishedKeys = new Set(Array.isArray(manifest.files) ? manifest.files.map((f) => f && String(f.path).toLowerCase()) : []);
+
+    if (manifest.remove !== undefined) {
+        if (!Array.isArray(manifest.remove) || manifest.remove.length > 500) add("remove invalide");
+        else {
+            for (const rel of manifest.remove) {
+                const problem = typeof rel === "string" ? validateRelPath(rel) : "pas une chaîne";
+                if (problem) add(`remove : ${String(rel).slice(0, 80)} : ${problem}`);
+                else if (publishedKeys.has(rel.toLowerCase())) add(`remove : ${rel} est aussi publié`);
+            }
+        }
+    }
+
     if (manifest.preserved !== undefined && (!Array.isArray(manifest.preserved) || manifest.preserved.some((p) => typeof p !== "string"))) {
         add("preserved invalide");
     }

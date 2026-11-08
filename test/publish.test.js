@@ -93,6 +93,8 @@ test("Manifest v2 : contenu, catégories, préservés non publiés", async () =>
     assert.strictEqual(manifest.minecraft, "1.21.1");
     assert.strictEqual(manifest.java, 21);
     assert.deepStrictEqual(manifest.strictDirs, ["mods"]);
+    assert.ok(manifest.remove.includes("mods/architectury-13.0.8-fabric.jar"), "liste remove reprise de policy.json");
+    assert.ok(manifest.remove.every((p) => publish.validateRelPath(p) === null));
 
     const byPath = Object.fromEntries(manifest.files.map((f) => [f.path, f]));
     assert.deepStrictEqual(Object.keys(byPath).sort(), [
@@ -188,6 +190,8 @@ test("Validation : tous les cas de refus", async () => {
     refuse((m) => { m.files[0].policy = "preserved"; }, "catégorie");
     refuse((m) => { m.version = "1.0"; }, "version invalide");
     refuse((m) => { m.files = m.files.filter((f) => !f.path.startsWith("mods/")); }, "mode strict");
+    refuse((m) => { m.remove = ["../evasion.dll"]; }, "remove");
+    refuse((m) => { m.remove = ["mods/alpha.jar"]; }, "aussi publié");
 
     const m = clone();
     m.files = m.files.filter((f) => !f.path.startsWith("mods/"));

@@ -22,6 +22,21 @@
 
   "strictDirs": ["mods"],
 
+  "_remove": "Fichiers EXACTS à retirer chez les joueurs s'ils existent (mis en quarantaine dans .removed/, jamais supprimés définitivement). Reprend l'ancienne liste 'incompatibleMods' du launcher.",
+  "remove": [
+    "mods/seasonhud-fabric-1.21.1-1.13.8.jar",
+    "mods/ForgeConfigAPIPort-v21.1.4-1.21.1-Fabric.jar",
+    "mods/architectury-13.0.8-fabric.jar",
+    "mods/cobblemon_quests-[1.21.1]-fabric-1.1.14.jar",
+    "mods/Chunky-Fabric-1.4.23.jar.disabled",
+    "mods/academy-mc1.21.1-v2.4.1+build.550-fabric.jar.disabled",
+    "mods/bobby-5.2.4+mc1.21.jar.disabled",
+    "mods/c2me-fabric-mc1.21.1-0.3.0+alpha.0.320.jar.disabled",
+    "mods/cobblemon_spawn_alerts-fabric-1.8.2.jar.disabled",
+    "mods/cobblemountslot-1.0.1.jar.disabled",
+    "mods/worldedit-mod-7.3.8.jar.disabled"
+  ],
+
   "fallbackPolicy": "default",
 
   "rules": [

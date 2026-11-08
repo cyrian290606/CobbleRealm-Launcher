@@ -177,6 +177,46 @@ contextBridge.exposeInMainWorld(
                     callback(data);
                 }
             );
-        }
+        },
+
+
+        /* ==============================
+           MISE À JOUR DU MODPACK
+        ============================== */
+
+        /* { step, message, file, filesDone, filesTotal, bytesDone, bytesTotal, percent, speed } */
+        onUpdateProgress: (callback) => {
+            ipcRenderer.on("update-progress", (event, data) => callback(data));
+        },
+
+        /* { code, message, canRepair } */
+        onUpdateError: (callback) => {
+            ipcRenderer.on("update-error", (event, data) => callback(data));
+        },
+
+        /* { message } : lancement hors-ligne sur la version installée */
+        onUpdateWarning: (callback) => {
+            ipcRenderer.on("update-warning", (event, data) => callback(data));
+        },
+
+        repairInstallation: () =>
+            ipcRenderer.invoke(
+                "repair-installation"
+            ),
+
+
+        /* ==============================
+           MISE À JOUR DU LAUNCHER LUI-MÊME
+        ============================== */
+
+        /* { state: "downloading" | "ready", version } */
+        onLauncherSelfUpdate: (callback) => {
+            ipcRenderer.on("launcher-self-update", (event, data) => callback(data));
+        },
+
+        installLauncherUpdate: () =>
+            ipcRenderer.invoke(
+                "install-launcher-update"
+            )
     }
 );

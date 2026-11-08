@@ -1,11 +1,17 @@
 {
   "name": "cobblerealm-launcher",
-  "version": "1.0.6",
+  "version": "2.0.0",
   "description": "Launcher officiel CobbleRealm",
   "main": "main.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cyrian290606/CobbleRealm-Launcher.git"
+  },
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder --win"
+    "build": "electron-builder --win",
+    "release": "electron-builder --win --publish always",
+    "test": "node test/phase1.test.js && node test/publish.test.js && node test/updater.test.js && node test/runtime.test.js"
   },
   "author": "CobbleRealm",
   "license": "ISC",
@@ -16,7 +22,7 @@
   },
   "dependencies": {
     "@azure/msal-node": "^6.0.0",
-    "adm-zip": "^0.6.1",
+    "electron-updater": "6.8.10",
     "extract-zip": "^2.0.1",
     "minecraft-launcher-core": "^3.18.2"
   },
@@ -27,8 +33,26 @@
       "output": "dist"
     },
     "files": [
-      "**/*",
-      "!dist/**/*"
+      "main.js",
+      "preload.js",
+      "auth.js",
+      "minecraftAuth.js",
+      "fabric.js",
+      "runtime.js",
+      "launcherUpdates.js",
+      "index.html",
+      "icon.ico",
+      "assets/**/*",
+      "updater/**/*",
+      "package.json"
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "cyrian290606",
+        "repo": "CobbleRealm-Launcher",
+        "releaseType": "release"
+      }
     ],
     "win": {
       "target": "nsis",
@@ -39,7 +63,8 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "CobbleRealm Launcher"
+      "shortcutName": "CobbleRealm Launcher",
+      "artifactName": "CobbleRealm-Launcher-Setup.exe"
     }
   }
 }

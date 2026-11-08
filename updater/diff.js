@@ -75,7 +75,7 @@ async function buildPlan({ manifest, gameRoot, lock, repair = false, hashCache =
         const record = records[file.path];
 
         if (!repair && record && record.sha256 === file.sha256 &&
-            record.size === st.size && record.mtimeMs === Math.floor(st.mtimeMs)) {
+            record.size === st.size && Math.abs(record.mtimeMs - st.mtimeMs) < 2) {     // tolérance d'arrondi du système de fichiers
             unchanged.push({ file, record });
             continue;
         }
@@ -113,6 +113,10 @@ async function buildPlan({ manifest, gameRoot, lock, repair = false, hashCache =
         onScan(++done, toHash.length);
     });
 
+    /* Ordre déterministe (celui du manifest), indépendant de la vitesse des calculs de hash. */
+    const order = new Map(manifest.files.map((f, i) => [f.path, i]));
+    needsDownload.sort((x, y) => order.get(x.file.path) - order.get(y.file.path));
+
     /* Fichiers installés par le launcher puis retirés du manifest (managed seulement). */
     const toRemove = [];
 
@@ -141,6 +145,18 @@ async function buildPlan({ manifest, gameRoot, lock, repair = false, hashCache =
         }
     }
 
+    /* Liste explicite (manifest.remove) : ces fichiers exacts sont retirés s'ils existent. */
+    const explicitRemovals = [];
+
+    for (const rel of manifest.remove || []) {
+
+        if (manifestKeys.has(lowerKey(rel)) || toRemove.includes(rel) || strictRemovals.includes(rel)) continue;
+
+        try {
+            if (fs.lstatSync(resolveInside(gameRoot, rel)).isFile()) explicitRemovals.push(rel);
+        } catch { /* absent : rien à faire */ }
+    }
+
     /* Téléchargements dédoublonnés par contenu. */
     const bySha = new Map();
 
@@ -159,8 +175,10 @@ async function buildPlan({ manifest, gameRoot, lock, repair = false, hashCache =
         unchanged,
         toRemove,
         strictRemovals,
+        explicitRemovals,
         bytesToDownload: uniqueDownloads.reduce((sum, d) => sum + d.size, 0),
-        isEmpty: needsDownload.length === 0 && toRemove.length === 0 && strictRemovals.length === 0
+        isEmpty: needsDownload.length === 0 && toRemove.length === 0 &&
+            strictRemovals.length === 0 && explicitRemovals.length === 0
     };
 }
 
