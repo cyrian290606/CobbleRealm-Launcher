@@ -34,7 +34,13 @@ function networkLike(error) {
     );
 }
 
-function describeError({ step, error = {} }) {
+function describeError(input) {
+
+    /* gravité par défaut : « error » (rouge) ; « info » = simple information (annulation) */
+    return { severity: "error", ...describeErrorCore(input) };
+}
+
+function describeErrorCore({ step, error = {} }) {
 
     const code = (error && error.code) || null;
     const status = error && error.status;
@@ -42,6 +48,17 @@ function describeError({ step, error = {} }) {
 
     /* ---- Mise à jour du modpack : les messages sont déjà rédigés pour le joueur ---- */
     if (step === "update") {
+
+        if (code === "CANCELLED") {
+            return {
+                code: "UPDATE_CANCELLED",
+                title: "Mise à jour annulée",
+                message: text,
+                actions: ["retry"],
+                canRepair: false,
+                severity: "info"
+            };
+        }
 
         const known = typeof code === "string" && /^[A-Z_]+$/.test(code) && text;
 

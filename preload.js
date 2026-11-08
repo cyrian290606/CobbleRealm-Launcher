@@ -223,6 +223,12 @@ contextBridge.exposeInMainWorld(
             ipcRenderer.on("update-warning", (event, data) => callback(data));
         },
 
+        /* Annule le téléchargement en cours (les fichiers déjà reçus sont conservés) */
+        cancelUpdate: () =>
+            ipcRenderer.invoke(
+                "cancel-update"
+            ),
+
         repairInstallation: () =>
             ipcRenderer.invoke(
                 "repair-installation"

@@ -32,6 +32,7 @@ const MESSAGES = {
     MANIFEST_INVALID: "La liste de mise à jour reçue est invalide. Préviens l'équipe CobbleRealm si le problème continue.",
     FORBIDDEN_HOST: "Une adresse de téléchargement non autorisée a été refusée par sécurité. Préviens l'équipe CobbleRealm.",
     ABORTED: "La mise à jour a été interrompue.",
+    CANCELLED: "Mise à jour annulée. Tu pourras la reprendre quand tu veux : les fichiers déjà téléchargés sont conservés.",
     UNKNOWN: "Une erreur inattendue est survenue pendant la mise à jour. Réessaie, ou utilise « Réparer l'installation »."
 };
 
@@ -85,6 +86,7 @@ const e = (code, extra) => new UpdateError(code, MESSAGES[code], extra);
 module.exports = {
     UpdateError, MESSAGES, mo,
     corruptError, diskFullError, missingRemoteError, toUpdateError,
+    cancelledError: () => e("CANCELLED"),
     offlineError: (cause) => e("OFFLINE", { cause }),
     serverError: (cause) => e("SERVER", { cause }),
     forbiddenHostError: (url) => e("FORBIDDEN_HOST", { details: url }),

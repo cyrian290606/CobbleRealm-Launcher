@@ -217,6 +217,48 @@ const MEASURE = `(() => {
   await ev("document.getElementById('accountMenu').hidden = true; showDisconnected()");
   await shot("g3-non-connecte-1200x700.png");
 
+  /* ---- Groupe 4 : zone de téléchargement ---- */
+  const STATES = {
+    "inactif": "hideError(); document.getElementById('updateBarWrap').hidden = true; document.getElementById('updateWarning').hidden = true",
+    "téléchargement": "hideError(); document.getElementById('updateWarning').hidden = true; document.getElementById('updateBarWrap').hidden = false; document.getElementById('progressTitle').textContent = 'Téléchargement... 42 %'; document.getElementById('progressEta').textContent = '≈ 3 min restantes'; document.getElementById('updateBar').style.width = '42%'; document.getElementById('updateDetail').textContent = 'cobblemon-fabric-1.6.1+1.21.1-un-nom-de-fichier-tres-long.jar · 38/212 fichiers · 412,3 Mo / 1,92 Go · 18,4 Mo/s'",
+    "avertissement": "hideError(); document.getElementById('updateBarWrap').hidden = true; document.getElementById('updateWarning').textContent = 'Hors-ligne : lancement de la version installée (v10).'; document.getElementById('updateWarning').hidden = false",
+    "annulation (information)": "document.getElementById('updateBarWrap').hidden = true; document.getElementById('updateWarning').hidden = true; showError({ title: 'Mise à jour annulée', message: 'Mise à jour annulée. Tu pourras la reprendre quand tu veux : les fichiers déjà téléchargés sont conservés.', code: 'UPDATE_CANCELLED', severity: 'info', actions: ['retry'] })"
+  };
+
+  for (const [w, h] of SIZES) {
+    await size(w, h);
+    const rows = {};
+    for (const [name, script] of Object.entries(STATES)) {
+      await ev(script); await sleep(120);
+      rows[name] = await ev(`(() => { const p = document.querySelector('.play-panel').getBoundingClientRect(), b = document.getElementById('playButton').getBoundingClientRect(), d = document.getElementById('updateDetail'), c = document.getElementById('cancelUpdate');
+        return { panelH: Math.round(p.height), btnY: Math.round(b.y), detailClipped: !document.getElementById('updateBarWrap').hidden && d.scrollWidth > d.clientWidth + 1 && getComputedStyle(d).textOverflow !== 'ellipsis', cancelVisible: c.getBoundingClientRect().right <= p.right && c.getBoundingClientRect().bottom <= p.bottom }; })()`);
+    }
+    const issues = [];
+    const buttonYs = new Set(Object.values(rows).map((r) => r.btnY));
+    if (buttonYs.size !== 1) issues.push("le bouton JOUER bouge : " + [...buttonYs].join(" / "));
+    const busyHeights = new Set(["téléchargement", "avertissement", "annulation (information)"].map((n) => rows[n].panelH));
+    if (busyHeights.size !== 1) issues.push("hauteur du panneau instable : " + ["téléchargement", "avertissement", "annulation (information)"].map((n) => n + "=" + rows[n].panelH).join(", "));
+    if (rows["téléchargement"].detailClipped || !rows["téléchargement"].cancelVisible) issues.push("détail coupé ou bouton Annuler hors du panneau");
+    check(`zone de téléchargement stable — ${w}×${h}`, issues.length === 0, issues.join(" ; ") || "bouton JOUER fixe, hauteur constante");
+    if ([900, 1200].includes(w)) { await ev(STATES["téléchargement"]); await shot(`g4-telechargement-${w}x${h}.png`); }
+  }
+  await ev(STATES["inactif"]);
+
+  /* bannière « nouvelle version du launcher » dans la barre latérale */
+  for (const [w, h] of SIZES) {
+    await size(w, h);
+    await ev("document.getElementById('selfUpdateBox').hidden = false; document.getElementById('selfUpdateText').textContent = 'Nouvelle version du launcher prête (v2.0.1).'; document.getElementById('selfUpdateButton').hidden = false; showConnectedAccount('joueur@mail.com')");
+    const m = await ev(`(() => { const r = (id) => document.getElementById(id).getBoundingClientRect(); const side = document.querySelector('.sidebar').getBoundingClientRect(), box = r('selfUpdateBox'), acc = r('microsoftAccount'), menu = document.querySelector('.menu').getBoundingClientRect(), issues = [];
+      if (box.right > side.right || box.left < side.left) issues.push('bannière hors de la barre latérale');
+      if (box.bottom > acc.top) issues.push('bannière sur le compte');
+      if (box.top < menu.bottom) issues.push('bannière sur le menu de navigation');
+      const btn = r('selfUpdateButton'); if (btn.right > box.right || btn.bottom > box.bottom + 1) issues.push('bouton Redémarrer déborde');
+      return issues; })()`);
+    check(`bannière du launcher dans la barre latérale — ${w}×${h}`, m.length === 0, m.join(" ; "));
+    if (w === 1200) await shot("g4-banniere-launcher-1200x700.png");
+  }
+  await ev("document.getElementById('selfUpdateBox').hidden = true");
+
   /* Aucune erreur dans la page */
   const problems = events.filter((e) => e.method === "Runtime.exceptionThrown" || (e.method === "Log.entryAdded" && e.params.entry.level === "error" && !/Failed to load resource|ERR_CONNECTION/.test(e.params.entry.text)));
   check("aucune erreur CSP / exception dans la page", problems.length === 0, JSON.stringify(problems.slice(0, 2).map((p) => p.params.entry ? p.params.entry.text : p.params.exceptionDetails.text)));

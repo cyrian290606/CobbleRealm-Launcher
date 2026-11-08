@@ -27,39 +27,53 @@ function freeSpaceBytes(dir) {
     }
 }
 
-/* Estimation de vitesse sur une fenêtre glissante de 3 s. */
-function createProgress({ bytesTotal, filesTotal, onProgress }) {
+/*
+ * Progression : vitesse sur une fenêtre glissante de 3 s et temps restant estimé.
+ * Les octets déjà présents (reprise) comptent dans l'avancement mais PAS dans la vitesse,
+ * sinon le temps restant serait faussé.
+ */
+function createProgress({ bytesTotal, filesTotal, onProgress, now = Date.now }) {
 
     const samples = [];
-    let bytesDone = 0;
+    let bytesDone = 0;       // avancement total (reprise comprise)
+    let realDone = 0;        // octets réellement reçus pendant cette exécution
     let filesDone = 0;
     let lastEmit = 0;
+    let startedAt = null;
     const active = new Set();
 
     const snapshot = () => {
 
-        const now = Date.now();
-        while (samples.length && now - samples[0].t > 3000) samples.shift();
+        const t = now();
+        while (samples.length && t - samples[0].t > 3000) samples.shift();
 
         const first = samples[0];
-        const speed = first && now > first.t ? ((bytesDone - first.bytes) / (now - first.t)) * 1000 : 0;
+        const speed = first && t > first.t ? ((realDone - first.bytes) / (t - first.t)) * 1000 : 0;
+
+        /* Estimation affichée seulement quand elle est fiable : 3 s de téléchargement et une vitesse non nulle. */
+        const reliable = startedAt !== null && t - startedAt >= 3000 && speed > 0;
+        const remaining = Math.max(0, bytesTotal - bytesDone);
 
         return {
             step: "download",
             file: [...active][0] || "",
             filesDone, filesTotal, bytesDone, bytesTotal,
             percent: bytesTotal > 0 ? Math.min(100, Math.floor((bytesDone / bytesTotal) * 100)) : 100,
-            speed: Math.max(0, Math.round(speed))
+            speed: Math.max(0, Math.round(speed)),
+            etaSeconds: remaining === 0 ? 0 : (reliable ? Math.ceil(remaining / speed) : null)
         };
     };
 
     return {
         add(bytes) {
+            const t = now();
+            if (startedAt === null) startedAt = t;
             bytesDone += bytes;
-            const now = Date.now();
-            samples.push({ t: now, bytes: bytesDone });
-            if (now - lastEmit >= 150) { lastEmit = now; onProgress(snapshot()); }
+            realDone += bytes;
+            samples.push({ t, bytes: realDone });
+            if (t - lastEmit >= 150) { lastEmit = t; onProgress(snapshot()); }
         },
+        addFree(bytes) { bytesDone += bytes; },
         rewind(bytes) { bytesDone = Math.max(0, bytesDone - bytes); },
         start(label) { active.add(label); },
         finish(label) { active.delete(label); filesDone++; onProgress(snapshot()); },
@@ -79,7 +93,7 @@ async function downloadOne(item, ctx) {
 
     /* Déjà téléchargé et vérifié lors d'une exécution précédente. */
     if (await fileSize(finalPath) === item.size) {
-        progress.add(item.size);
+        progress.addFree(item.size);
         progress.start(item.label);
         progress.finish(item.label);
         return;
@@ -108,7 +122,7 @@ async function downloadOne(item, ctx) {
                 for await (const chunk of fs.createReadStream(partPath)) hash.update(chunk);
             } else offset = 0;
 
-            if (offset !== countedBytes) { progress.rewind(countedBytes); progress.add(offset); countedBytes = offset; }
+            if (offset !== countedBytes) { progress.rewind(countedBytes); progress.addFree(offset); countedBytes = offset; }
 
             if (offset < item.size) {
 

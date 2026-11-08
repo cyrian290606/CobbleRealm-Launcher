@@ -23,7 +23,7 @@ const check = (name, ok, detail = "") => { results.push(ok); log(`  ${ok ? "OK  
   /* 1. modpack de démonstration + publication réelle avec publish.js */
   const src = path.join(tmp, "source");
   const w = (rel, buf) => { const f = path.join(src, rel); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, buf); };
-  for (const m of ["alpha", "beta", "gamma"]) w(`mods/${m}.jar`, crypto.randomBytes(1_500_000));
+  for (const m of ["alpha", "beta", "gamma"]) w(`mods/${m}.jar`, crypto.randomBytes(4_000_000));
   w("config/cobblemon/main.json", '{"a":1}');
   w("options.txt", "fov:70");
   w("saves/monde/level.dat", "NE-DOIT-PAS-ETRE-PUBLIE");
@@ -33,7 +33,7 @@ const check = (name, ok, detail = "") => { results.push(ok); log(`  ${ok ? "OK  
   check("publish.js prépare la publication", pub.status === 0, (pub.stdout.match(/Version .*/) || [pub.stderr])[0]);
 
   /* 2. serveur de test (débit limité pour voir la progression) */
-  const server = spawn(process.execPath, [path.join(project, "tools", "test-server.js"), out, "--port", String(SERVER_PORT), "--speed", "1500"], { stdio: ["ignore", "pipe", "pipe"] });
+  const server = spawn(process.execPath, [path.join(project, "tools", "test-server.js"), out, "--port", String(SERVER_PORT), "--speed", "400"], { stdio: ["ignore", "pipe", "pipe"] });
   await new Promise((resolve) => server.stdout.on("data", (d) => String(d).includes("Serveur de test") && resolve()));
 
   /* 3. Electron en mode développement isolé */
@@ -77,10 +77,31 @@ const check = (name, ok, detail = "") => { results.push(ok); log(`  ${ok ? "OK  
   await shot("1-demarrage.png");
 
   /* 6. réparation = synchronisation complète, avec progression visible */
+  /* 6a. annulation pendant le téléchargement */
+  const cancelledRun = ev("window.cobbleRealm.repairInstallation()");
+  const bar1 = await waitFor("!document.getElementById('updateBarWrap').hidden", 20000);
+  const eta = await waitFor("document.getElementById('progressEta').textContent.trim()", 20000);
+  const head = await ev(text("progressTitle"));
+  check("barre de progression : pourcentage et temps restant affichés", Boolean(bar1) && /^Téléchargement\.\.\. \d+ %$/.test(head) && /^(moins d'1 min restante|≈ \d+ min restantes?)$/.test(eta || ""), head + " | " + eta);
+  const detail = await ev(text("updateDetail"));
+  check("détail : fichier, nombre de fichiers, volume et vitesse", /fichiers · .*(Ko|Mo) \/ .*(Ko|Mo) · .*\/s/.test(detail), detail);
+  await shot("4a-telechargement.png");
+  check("bouton « Annuler » actif pendant le téléchargement", await ev("!document.getElementById('cancelUpdate').disabled"));
+  await ev("document.getElementById('cancelUpdate').click()");
+  const cancelled = await cancelledRun;
+  check("annulation : la mise à jour s'arrête proprement (code CANCELLED)", cancelled && cancelled.success === false && cancelled.code === "CANCELLED", JSON.stringify(cancelled));
+  const infoShown = await waitFor("!document.getElementById('errorBox').hidden && document.getElementById('errorBox').classList.contains('info')", 10000);
+  const infoTitle = await ev(text("errorTitle"));
+  check("annulation : simple information (pas une erreur rouge) « Mise à jour annulée »", Boolean(infoShown) && infoTitle === "Mise à jour annulée", infoTitle);
+  check("annulation : barre masquée, rien d'installé, fichiers déjà reçus conservés",
+    await ev("document.getElementById('updateBarWrap').hidden") && !fs.existsSync(path.join(game, "lock.json")) && !fs.existsSync(path.join(game, "mods", "alpha.jar")) &&
+    fs.existsSync(path.join(game, ".staging")) && fs.readdirSync(path.join(game, ".staging")).length > 0);
+  await shot("4b-annule.png");
+
+  /* 6b. reprise : la réparation suivante termine l'installation */
   const repairPromise = ev("window.cobbleRealm.repairInstallation()");
   const sawBar = await waitFor("!document.getElementById('updateBarWrap').hidden", 20000);
-  const detail = await ev(text("updateDetail"));
-  check("barre de progression + vitesse affichées", Boolean(sawBar) && /fichiers — .*(Ko|Mo) \/ .*(Ko|Mo)/.test(detail), detail);
+  check("après annulation, la barre repart (bouton « Annuler » de nouveau actif)", Boolean(sawBar) && await ev("!document.getElementById('cancelUpdate').disabled && document.getElementById('cancelUpdate').textContent.trim() === 'Annuler'"));
   await shot("2-telechargement.png");
   const repaired = await repairPromise;
   check("réparation réussie", repaired && repaired.success === true, JSON.stringify(repaired));

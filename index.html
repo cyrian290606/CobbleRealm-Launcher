@@ -165,9 +165,57 @@
            COMPTE MICROSOFT
         ========================== */
 
+        .sidebar-bottom {
+            margin-top: auto;
+        }
+
         .account-wrap {
             position: relative;
-            margin-top: auto;
+        }
+
+        .self-update {
+            margin-bottom: 10px;
+            padding: 10px 12px;
+
+            border-radius: 12px;
+
+            color: #b8ffd0;
+            background: rgba(20, 90, 60, 0.35);
+            border: 1px solid rgba(120, 255, 170, 0.35);
+
+            font-size: 13px;
+            line-height: 1.4;
+        }
+
+        .self-update[hidden] {
+            display: none;
+        }
+
+        .self-update-button {
+            margin-top: 8px;
+            padding: 7px 12px;
+
+            border-radius: 9px;
+            border: 1px solid rgba(120, 255, 170, 0.5);
+
+            color: white;
+            background: rgba(120, 255, 160, 0.2);
+
+            font-family: inherit;
+            font-size: 12px;
+            font-weight: 800;
+
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .self-update-button:hover {
+            background: rgba(120, 255, 160, 0.34);
+        }
+
+        .self-update-button:focus-visible {
+            outline: 2px solid #63e7ff;
+            outline-offset: 2px;
         }
 
         .account {
@@ -1261,6 +1309,131 @@
         }
 
 /* =========================
+   ZONE DU HAUT DU PANNEAU + PROGRESSION
+========================= */
+
+.panel-slot {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+}
+
+/* dès qu'un téléchargement, un avertissement ou une erreur est affiché, la zone garde une hauteur constante */
+.play-panel.busy .panel-slot {
+    min-height: 168px;
+}
+
+.play-panel.busy .server-status {
+    display: none;
+}
+
+.progress-block {
+    margin: 6px 0 0 21px;
+    flex: 0 0 calc(100% - 21px);
+    min-width: 0;
+}
+
+.progress-block[hidden] {
+    display: none;
+}
+
+.progress-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+
+    font-size: 14px;
+    font-weight: 700;
+    color: #eaf6ff;
+}
+
+.progress-eta {
+    color: #9fefff;
+
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.progress-track {
+    height: 8px;
+    margin-top: 7px;
+
+    border-radius: 4px;
+
+    background: rgba(255, 255, 255, 0.14);
+
+    overflow: hidden;
+}
+
+.progress-fill {
+    width: 0%;
+    height: 100%;
+
+    border-radius: 4px;
+
+    background: linear-gradient(90deg, #22d5f3, #3087ff 55%, #a94cff);
+
+    transition: width 0.2s ease-out;
+}
+
+.progress-foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+
+    margin-top: 7px;
+}
+
+.progress-detail {
+    flex: 1;
+    min-width: 0;
+
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    color: #b9c9dc;
+
+    font-size: 12px;
+}
+
+.progress-cancel {
+    flex-shrink: 0;
+
+    padding: 5px 12px;
+
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+
+    color: white;
+    background: rgba(255, 255, 255, 0.08);
+
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 800;
+
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.progress-cancel:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.progress-cancel:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+
+.progress-cancel:focus-visible {
+    outline: 2px solid #63e7ff;
+    outline-offset: 2px;
+}
+
+/* =========================
    ERREUR LISIBLE (dans le panneau JOUER)
 ========================= */
 
@@ -1280,6 +1453,20 @@
 }
 
 .error-box[hidden] {
+    display: none;
+}
+
+/* simple information (ex. mise à jour annulée) : couleurs du launcher, pas de rouge */
+.error-box.info {
+    background: rgba(8, 40, 70, 0.5);
+    border-color: rgba(99, 231, 255, 0.45);
+}
+
+.error-box.info .error-title {
+    color: #9fefff;
+}
+
+.error-box.info .error-code {
     display: none;
 }
 
@@ -1618,6 +1805,14 @@
         </nav>
 
 
+        <div class="sidebar-bottom">
+
+            <!-- Mise à jour du launcher lui-même -->
+            <div class="self-update" id="selfUpdateBox" hidden>
+                <div id="selfUpdateText"></div>
+                <button class="self-update-button" id="selfUpdateButton" hidden>Redémarrer maintenant</button>
+            </div>
+
         <div class="account-wrap">
 
             <!-- Menu du compte (s'ouvre au-dessus de la carte) -->
@@ -1670,6 +1865,8 @@
 
         </div>
 
+        </div>
+
 
     </aside>
 
@@ -1709,6 +1906,8 @@
         <section class="play-panel" id="playPanel">
 
 
+            <div class="panel-slot" id="panelSlot">
+
             <!-- Erreur lisible : remplace les lignes de statut tant qu'elle est affichée -->
             <div class="error-box" id="errorBox" hidden role="alert">
                 <div class="error-title" id="errorTitle"></div>
@@ -1716,7 +1915,6 @@
                 <div class="error-actions" id="errorActions"></div>
                 <div class="error-code" id="errorCode"></div>
             </div>
-
 
             <div class="launcher-status">
 
@@ -1738,21 +1936,26 @@
 </div>
 
 <!-- Progression de la mise à jour du modpack -->
-<div id="updateBarWrap" hidden style="margin: 4px 0 0 21px; flex: 0 0 calc(100% - 21px);">
-    <div style="height: 6px; border-radius: 3px; background: rgba(255,255,255,0.14); overflow: hidden;">
-        <div id="updateBar" style="height: 100%; width: 0%; background: #63e7ff; transition: width 0.15s;"></div>
+<div id="updateBarWrap" class="progress-block" hidden>
+
+    <div class="progress-head">
+        <span id="progressTitle">Téléchargement... 0 %</span>
+        <span id="progressEta" class="progress-eta"></span>
     </div>
-    <div id="updateDetail" style="margin-top: 5px; font-size: 12px; opacity: 0.85; word-break: break-all;"></div>
+
+    <div class="progress-track" id="progressTrack" role="progressbar" aria-label="Avancement du téléchargement" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <div class="progress-fill" id="updateBar"></div>
+    </div>
+
+    <div class="progress-foot">
+        <span id="updateDetail" class="progress-detail"></span>
+        <button class="progress-cancel" id="cancelUpdate">Annuler</button>
+    </div>
+
 </div>
 
 <!-- Avertissement (hors-ligne) -->
 <div id="updateWarning" hidden style="margin: 4px 0 0 21px; flex: 0 0 calc(100% - 21px); font-size: 13px; color: #ffd37a;"></div>
-
-<!-- Mise à jour du launcher lui-même -->
-<div id="selfUpdateBox" hidden style="margin: 6px 0 0 21px; flex: 0 0 calc(100% - 21px); font-size: 13px; color: #9dffb0;">
-    <span id="selfUpdateText"></span>
-    <button class="top-button" id="selfUpdateButton" hidden style="height: 30px; padding: 0 12px; font-size: 12px; margin-left: 8px; background: rgba(120,255,160,0.20);">Redémarrer</button>
-</div>
 
             </div>
 
@@ -1770,6 +1973,8 @@
                     </strong>
 
                 </span>
+
+            </div>
 
             </div>
 
@@ -2774,6 +2979,30 @@ const selfUpdateBox = document.getElementById("selfUpdateBox");
 const selfUpdateText = document.getElementById("selfUpdateText");
 const selfUpdateButton = document.getElementById("selfUpdateButton");
 
+/* Temps restant lisible : arrondi à la minute pour ne pas "trembler". */
+function formatEta(seconds) {
+
+    if (seconds === null || seconds === undefined || seconds <= 0) {
+        return "";
+    }
+
+    if (seconds < 60) {
+        return "moins d'1 min restante";
+    }
+
+    if (seconds < 3600) {
+
+        const minutes = Math.round(seconds / 60);
+
+        return "≈ " + minutes + " min restante" + (minutes > 1 ? "s" : "");
+    }
+
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.round((seconds % 3600) / 60);
+
+    return "≈ " + hours + " h " + String(minutes).padStart(2, "0") + " min restantes";
+}
+
 function formatBytes(bytes) {
 
     if (bytes >= 1024 ** 3) {
@@ -2795,6 +3024,37 @@ function resetUpdateUi() {
     hideError();
     updateWarning.hidden = true;
 }
+
+const progressTitle = document.getElementById("progressTitle");
+const progressEta = document.getElementById("progressEta");
+const progressTrack = document.getElementById("progressTrack");
+const cancelUpdateButton = document.getElementById("cancelUpdate");
+
+function resetCancelButton() {
+
+    cancelUpdateButton.disabled = false;
+    cancelUpdateButton.textContent = "Annuler";
+    cancelUpdateButton.title = "";
+}
+
+cancelUpdateButton.addEventListener("click", async () => {
+
+    cancelUpdateButton.disabled = true;
+    cancelUpdateButton.textContent = "Annulation...";
+
+    let result = null;
+
+    try {
+        result = await window.cobbleRealm.cancelUpdate();
+    } catch { /* l'état est rétabli ci-dessous */ }
+
+    /* Trop tard : l'installation des fichiers a commencé, elle se termine proprement. */
+    if (result && result.cancelled === false) {
+
+        cancelUpdateButton.textContent = "Installation...";
+        cancelUpdateButton.title = "L'installation est en cours, elle ne peut plus être annulée.";
+    }
+});
 
 if (window.cobbleRealm && window.cobbleRealm.onUpdateProgress) {
 
@@ -2821,17 +3081,29 @@ if (window.cobbleRealm && window.cobbleRealm.onUpdateProgress) {
 
         if (e.step === "download") {
 
+            const percent = e.percent || 0;
+
+            if (updateBarWrap.hidden) {
+                resetCancelButton();
+            }
+
             updateBarWrap.hidden = false;
-            updateBar.style.width = (e.percent || 0) + "%";
+            updateBar.style.width = percent + "%";
 
-            launcherUpdateStatus.textContent =
-                "Téléchargement... " + (e.percent || 0) + "%";
+            progressTrack.setAttribute("aria-valuenow", String(percent));
+            progressTitle.textContent = "Téléchargement... " + percent + " %";
+            progressEta.textContent = formatEta(e.etaSeconds);
 
-            updateDetail.textContent =
-                (e.file ? e.file + " — " : "") +
-                e.filesDone + "/" + e.filesTotal + " fichiers — " +
+            launcherUpdateStatus.textContent = "Mise à jour du modpack";
+
+            const detail =
+                (e.file ? e.file + " · " : "") +
+                e.filesDone + "/" + e.filesTotal + " fichiers · " +
                 formatBytes(e.bytesDone) + " / " + formatBytes(e.bytesTotal) +
-                (e.speed > 0 ? " — " + formatBytes(e.speed) + "/s" : "");
+                (e.speed > 0 ? " · " + formatBytes(e.speed) + "/s" : "");
+
+            updateDetail.textContent = detail;
+            updateDetail.title = detail;
 
             return;
         }
@@ -2839,7 +3111,12 @@ if (window.cobbleRealm && window.cobbleRealm.onUpdateProgress) {
         if (e.step === "apply") {
 
             updateBar.style.width = "100%";
+            progressTitle.textContent = "Installation...";
+            progressEta.textContent = "";
             launcherUpdateStatus.textContent = "Installation...";
+
+            cancelUpdateButton.disabled = true;
+            cancelUpdateButton.textContent = "Installation...";
 
             return;
         }
@@ -2932,6 +3209,8 @@ function showError(err) {
         button.addEventListener("click", () => action.run(button));
         errorActions.appendChild(button);
     }
+
+    errorBox.classList.toggle("info", safe.severity === "info");
 
     playPanel.classList.add("has-error");
     errorBox.hidden = false;
@@ -3576,9 +3855,23 @@ const FALLBACK_NEWS = {
         }
     }
 
+    /* Zone du haut du panneau : hauteur constante dès qu'une progression, un avertissement ou une erreur s'affiche. */
+    function syncBusy() {
+
+        const panel = document.querySelector(".play-panel");
+
+        const busy =
+            !document.getElementById("updateBarWrap").hidden ||
+            !document.getElementById("updateWarning").hidden ||
+            !document.getElementById("errorBox").hidden;
+
+        panel.classList.toggle("busy", busy);
+    }
+
     /* Immédiat (sans attendre l'affichage) : fonctionne même si la fenêtre est cachée derrière une autre. */
     function queueFitNews() {
 
+        syncBusy();
         fitNews();
     }
 

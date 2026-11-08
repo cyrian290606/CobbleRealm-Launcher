@@ -10,6 +10,8 @@ const path = require("path");
 const crypto = require("crypto");
 
 const { createUpdater } = require("../updater");
+const { createProgress } = require("../updater/download");
+const { buildPlan } = require("../updater/diff");
 const { validateManifest } = require("../updater/manifest");
 const { createTestServer } = require("../tools/test-server");
 
@@ -449,6 +451,118 @@ test("Liste 'remove' : seuls les fichiers exacts listés sont mis en quarantaine
     const clash = { ...m, remove: ["mods/a.jar"] };
     assert.throws(() => validateManifest(clash, { allowLocal: true }), (e) => e.code === "MANIFEST_INVALID");
 }));
+
+/* ---------------- temps restant et annulation ---------------- */
+
+test("Temps restant : fiable seulement après 3 s, calculé sur la vitesse réelle (la reprise ne le fausse pas)", () => {
+    let clock = 0;
+    const events = [];
+    const progress = createProgress({ bytesTotal: 100_000_000, filesTotal: 2, onProgress: (e) => events.push(e), now: () => clock });
+
+    progress.addFree(40_000_000);                       // déjà présent (reprise) : compte dans l'avancement, pas dans la vitesse
+    progress.start("a.jar");
+
+    clock = 1000; progress.add(5_000_000);
+    assert.strictEqual(progress.snapshot().etaSeconds, null, "trop tôt : pas d'estimation");
+
+    for (let t = 2000; t <= 5000; t += 1000) { clock = t; progress.add(5_000_000); }   // 5 Mo/s réels
+    const snap = progress.snapshot();
+    assert.ok(Math.abs(snap.speed - 5_000_000) < 600_000, "vitesse réelle ≈ 5 Mo/s : " + snap.speed);
+    assert.strictEqual(snap.bytesDone, 65_000_000);
+    // il reste 35 Mo à 5 Mo/s => environ 7 s (et non 1 s si la reprise avait gonflé la vitesse)
+    assert.ok(snap.etaSeconds >= 6 && snap.etaSeconds <= 9, "ETA : " + snap.etaSeconds);
+    assert.strictEqual(snap.percent, 65);
+
+    // un autre fichier reprend en cours de route (octets déjà présents) : la vitesse affichée reste réelle
+    clock = 5500; progress.addFree(10_000_000);
+    const resumed = progress.snapshot();
+    assert.ok(resumed.speed < 6_000_000, "une reprise ne gonfle pas la vitesse : " + resumed.speed);
+    assert.ok(resumed.etaSeconds >= 4 && resumed.etaSeconds <= 7, "ETA après reprise : " + resumed.etaSeconds);
+
+    // vitesse nulle : pas d'estimation
+    clock = 20000;
+    assert.strictEqual(progress.snapshot().etaSeconds, null);
+
+    // terminé : 0
+    progress.add(35_000_000);
+    assert.strictEqual(progress.snapshot().etaSeconds, 0);
+});
+
+test("Annulation pendant le téléchargement : arrêt propre, fichiers vérifiés conservés, reprise sans retélécharger", () => withEnv(async (env) => {
+    const slow = blob("LENT", 900000);
+    const quick = blob("RAPIDE", 3000);
+    env.publish({ "mods/a-rapide.jar": quick, "mods/b-lent.jar": slow }, "1.0.0");
+    env.srv.state.faults.throttleBytesPerSec = 1_200_000;      // le gros fichier prend ~0,75 s
+
+    const updater = env.updater({ downloadOptions: { retryDelayMs: 1, concurrency: 1 } });
+    const running = updater.sync();
+    const rejection = assert.rejects(running, (e) => e.code === "CANCELLED" && /Mise à jour annulée/.test(e.message) && /conservés/.test(e.message));
+
+    // on attend que le petit fichier soit en place, puis on annule pendant le gros
+    for (let i = 0; i < 100 && !fs.existsSync(path.join(env.root, ".staging", sha(quick) + ".dl")); i++) await new Promise((r) => setTimeout(r, 10));
+    await new Promise((r) => setTimeout(r, 150));
+    assert.deepStrictEqual(updater.cancel(), { cancelled: true });
+    await rejection;
+
+    assert.ok(!fs.existsSync(path.join(env.root, "lock.json")), "rien d'installé");
+    assert.ok(!fs.existsSync(path.join(env.root, "mods", "a-rapide.jar")), "le jeu n'est pas touché");
+    assert.ok(fs.existsSync(path.join(env.root, ".staging", sha(quick) + ".dl")), "fichier déjà vérifié conservé");
+    assert.deepStrictEqual(updater.cancel(), { cancelled: false, reason: "none" }, "plus rien à annuler");
+
+    // reprise : le petit fichier n'est pas retéléchargé, le gros reprend là où il s'était arrêté
+    env.srv.state.faults.throttleBytesPerSec = 0;
+    env.resetRequests();
+    const r = await env.updater().sync();
+    assert.ok(r.ok);
+    assert.ok(!env.fileRequests().some((q) => q.path === "/f/" + sha(quick)), "déjà téléchargé : pas redemandé");
+    const resumed = env.fileRequests().find((q) => q.path === "/f/" + sha(slow));
+    assert.ok(resumed && /^bytes=\d+-$/.test(resumed.range || ""), "le gros fichier reprend avec Range : " + JSON.stringify(resumed));
+    assert.strictEqual(read(path.join(env.root, "mods/b-lent.jar")), slow.toString());
+}));
+
+test("Annulation impossible pendant l'installation des fichiers : la mise à jour se termine proprement", () => withEnv(async (env) => {
+    env.publish(V1(), "1.0.0");
+    let during = null;
+    let updater = null;
+    updater = env.updater({ hooks: { afterFile: (n) => { if (n === 1) during = updater.cancel(); } } });
+    const r = await updater.sync();
+    assert.deepStrictEqual(during, { cancelled: false, reason: "installing" });
+    assert.ok(r.ok);
+    assert.strictEqual(env.updater().status().valid, true);
+    assert.ok(fs.existsSync(path.join(env.root, "mods/a.jar")));
+}));
+
+test("Annulation d'une mise à jour installée (valide) : l'ancienne installation reste valide", () => withEnv(async (env) => {
+    env.publish(V1(), "1.0.0");
+    await env.updater().sync();
+
+    const big = blob("GROS", 900000);
+    env.publish({ ...V1(), "mods/a.jar": big }, "1.1.0");
+    env.srv.state.faults.throttleBytesPerSec = 1_000_000;
+
+    const updater = env.updater();
+    const running = updater.sync();
+    const rejection = assert.rejects(running, (e) => e.code === "CANCELLED");
+    await new Promise((r) => setTimeout(r, 200));
+    updater.cancel();
+    await rejection;
+
+    assert.strictEqual(env.updater().status().valid, true, "l'installation reste valide");
+    assert.strictEqual(JSON.parse(read(path.join(env.root, "lock.json"))).version, "1.0.0");
+    assert.strictEqual(read(path.join(env.root, "mods/a.jar")), blob("A1").toString());
+}));
+
+test("Annulation pendant la vérification des fichiers (migration) : arrêt immédiat", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "cr-scan-"));
+    try {
+        fs.mkdirSync(path.join(root, "mods"), { recursive: true });
+        fs.writeFileSync(path.join(root, "mods/a.jar"), blob("A1"));
+        const manifest = { schema: 2, version: "1", files: [{ path: "mods/a.jar", size: 3000, sha256: sha(blob("A1")), url: "https://github.com/x", policy: "managed" }] };
+        await assert.rejects(buildPlan({ manifest, gameRoot: root, lock: null, signal: controller.signal }), (e) => e.code === "ABORTED");
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
 
 /* ---------------- exécution ---------------- */
 

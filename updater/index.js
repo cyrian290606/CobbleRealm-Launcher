@@ -18,7 +18,7 @@ const { buildPlan } = require("./diff");
 const { downloadAll } = require("./download");
 const { applyPlan, purgeRemoved } = require("./apply");
 const { readLock } = require("./lock");
-const { UpdateError, toUpdateError, mo } = require("./errors");
+const { UpdateError, toUpdateError, mo, cancelledError } = require("./errors");
 
 const STAGING = ".staging";
 
@@ -32,6 +32,7 @@ function createUpdater({
     let manifestPromise = null;
     let manifestLoaded = false;     // vrai dès que le manifest a pu être lu au moins une fois
     let running = null;
+    let currentRun = null;          // { controller, phase: "scan" | "download" | "apply" }
 
     const emit = (event) => { try { onProgress(event); } catch { /* l'interface ne doit jamais casser la mise à jour */ } };
 
@@ -54,14 +55,14 @@ function createUpdater({
         return { valid, version: lock ? lock.version : null, lock };
     }
 
-    async function makePlan(manifest, { repair }) {
+    async function makePlan(manifest, { repair, signal = null }) {
 
         emit({ step: "scan", message: "Vérification des fichiers...", percent: 0 });
 
         const { lock } = installedInfo();
 
         const plan = await buildPlan({
-            manifest, gameRoot, lock, repair, hashCache,
+            manifest, gameRoot, lock, repair, hashCache, signal,
             onScan: (done, total) => emit({ step: "scan", message: "Vérification des fichiers...", percent: Math.floor((done / total) * 100) })
         });
 
@@ -113,32 +114,72 @@ function createUpdater({
 
     async function runSync({ repair }) {
 
-        const manifest = await getManifest();
-        const installed = installedInfo();
-        const plan = await makePlan(manifest, { repair });
+        const controller = new AbortController();
+        currentRun = { controller, phase: "scan" };
 
-        const mustWriteLock = !plan.isEmpty || plan.adopted.length > 0 || !installed.valid || installed.version !== manifest.version;
+        try {
 
-        if (!mustWriteLock) {
-            purgeRemoved(gameRoot, { now: now() });
+            const manifest = await getManifest();
+            const installed = installedInfo();
+            const plan = await makePlan(manifest, { repair, signal: controller.signal });
+
+            const mustWriteLock = !plan.isEmpty || plan.adopted.length > 0 || !installed.valid || installed.version !== manifest.version;
+
+            if (!mustWriteLock) {
+                purgeRemoved(gameRoot, { now: now() });
+                emit({ step: "done", percent: 100, message: "CobbleRealm est à jour" });
+                return { ok: true, offline: false, version: manifest.version, downloaded: 0, bytes: 0, quarantined: [] };
+            }
+
+            if (plan.uniqueDownloads.length) {
+                currentRun.phase = "download";
+                await downloadAll(plan.uniqueDownloads, { stagingDir, allowLocal, onProgress: emit, signal: controller.signal, ...downloadOptions });
+            }
+
+            /* À partir d'ici l'installation des fichiers a commencé : on ne peut plus annuler. */
+            currentRun.phase = "apply";
+
+            emit({ step: "apply", percent: 100, message: "Installation..." });
+
+            const result = applyPlan({ plan, manifest, gameRoot, stagingDir, hooks, now: now(), onProgress: emit });
+
             emit({ step: "done", percent: 100, message: "CobbleRealm est à jour" });
-            return { ok: true, offline: false, version: manifest.version, downloaded: 0, bytes: 0, quarantined: [] };
+
+            return {
+                ok: true, offline: false, version: manifest.version,
+                downloaded: plan.uniqueDownloads.length, bytes: plan.bytesToDownload, quarantined: result.quarantined
+            };
+
+        } catch (error) {
+
+            /* Annulation demandée par le joueur : ce n'est pas un échec (fichiers déjà vérifiés conservés). */
+            if (controller.signal.aborted && currentRun && currentRun.phase !== "apply") throw cancelledError();
+
+            throw error;
+
+        } finally {
+
+            currentRun = null;
+        }
+    }
+
+    /**
+     * Annule la mise à jour en cours (avant l'installation des fichiers).
+     * Les fichiers déjà téléchargés et vérifiés sont conservés : la reprise repart de là.
+     */
+    function cancel() {
+
+        if (!currentRun) {
+            return { cancelled: false, reason: "none" };
         }
 
-        if (plan.uniqueDownloads.length) {
-            await downloadAll(plan.uniqueDownloads, { stagingDir, allowLocal, onProgress: emit, ...downloadOptions });
+        if (currentRun.phase === "apply") {
+            return { cancelled: false, reason: "installing" };
         }
 
-        emit({ step: "apply", percent: 100, message: "Installation..." });
+        currentRun.controller.abort();
 
-        const result = applyPlan({ plan, manifest, gameRoot, stagingDir, hooks, now: now(), onProgress: emit });
-
-        emit({ step: "done", percent: 100, message: "CobbleRealm est à jour" });
-
-        return {
-            ok: true, offline: false, version: manifest.version,
-            downloaded: plan.uniqueDownloads.length, bytes: plan.bytesToDownload, quarantined: result.quarantined
-        };
+        return { cancelled: true };
     }
 
     /**
@@ -177,7 +218,7 @@ function createUpdater({
 
     return {
         getManifest,
-        check, sync,
+        check, sync, cancel,
         repair: () => sync({ repair: true }),
         status: installedInfo,
         stagingDir

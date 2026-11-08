@@ -1296,6 +1296,24 @@ handle(
 
 
 /* ==============================
+   ANNULATION DE LA MISE À JOUR
+   (avant l'installation des fichiers ; ce qui est déjà téléchargé est conservé pour la reprise)
+============================== */
+
+handle(
+    "cancel-update",
+
+    async () => {
+
+        return {
+            success: true,
+            ...getUpdater().cancel()
+        };
+    }
+);
+
+
+/* ==============================
    RAPPORT DE SUPPORT
    (jetons, e-mail, pseudo, identifiants et chemins personnels sont masqués)
 ============================== */

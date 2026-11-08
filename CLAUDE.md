@@ -51,7 +51,9 @@ Pas de dossier `src/` : tout est à la racine. **Tout nouveau fichier .js du pro
 - [runtime.js](runtime.js) : Java >= version du manifest (runtime CobbleRealm, JAVA_HOME, PATH, sinon JRE Temurin téléchargé via l'API Adoptium, SHA-256 vérifié).
 - [fabric.js](fabric.js) : profil Fabric selon `minecraft`/`fabricLoader` du manifest (régénéré si ils changent).
 - [launcherUpdates.js](launcherUpdates.js) : auto-update du launcher (electron-updater, GitHub Releases), inactif en développement.
-- [auth.js](auth.js), [minecraftAuth.js](minecraftAuth.js) : Microsoft (device code, cache chiffré `safeStorage`) puis Xbox → XSTS → Minecraft.
+- [auth.js](auth.js), [minecraftAuth.js](minecraftAuth.js) : Microsoft (device code, cache chiffré `safeStorage`) puis Xbox → XSTS → Minecraft. `loginMicrosoft()` partage une seule connexion à la fois ; `cancelLogin()` annule immédiatement (MSAL arrêté via `request.cancel`, rien n'est enregistré).
+- [playerErrors.js](playerErrors.js) : `describeError({step, error})` → message clair en français pour le joueur ({code, title, message, actions, severity}). Étapes : update, microsoft, minecraft-auth, java, fabric, launch, game-exit. Aucun détail technique dans le message.
+- [support.js](support.js) : rapport de support (`buildReport`) et `sanitize()` : masque jetons, e-mail, pseudo, UUID, IP, chemins Windows avec nom d'utilisateur. **Tout texte destiné à un rapport ou affiché au joueur passe par `sanitize`.**
 - [preload.js](preload.js) : pont `contextIsolation`. Tout nouveau canal IPC doit être déclaré dans main.js ET preload.js.
 - [index.html](index.html) : renderer, HTML + CSS + JS inline (CSP : pas de ressource externe).
 - [news.json](news.json) : annonces, lues sur `raw.githubusercontent.com/.../main/news.json`.
@@ -64,12 +66,12 @@ Fenêtre → news → `updater.check()` (lecture seule, rien n'est téléchargé
 
 ### Flux de lancement (`launch-minecraft`)
 
-1. `updater.sync()` (télécharge + applique). **Le jeu ne démarre jamais si cette étape échoue** : événement `update-error` {code, message, canRepair} + boutons Réessayer / Réparer. Hors-ligne avec installation valide : `update-warning` puis jeu sur la version installée.
+1. `updater.sync()` (télécharge + applique). **Le jeu ne démarre jamais si cette étape échoue** : événement `launch-error` {code, title, message, actions, severity} + boutons Réessayer / Réparer. Hors-ligne avec installation valide : `update-warning` puis jeu sur la version installée.
 2. Login Microsoft (device code affiché si session expirée) → `loginMinecraft`.
 3. `ensureJava` + `ensureFabricProfile` avec les versions du manifest (sinon dernier lock.json, sinon valeurs de secours `FALLBACK_VERSIONS`).
 4. `launcher.launch()` de MCLC. Écouteurs retirés à la fermeture du jeu.
 
-Événements vers l'UI : `update-progress`, `update-error`, `update-warning`, `launcher-update-status`, `minecraft-status`, `minecraft-log`, `minecraft-progress`, `microsoft-device-code` (null = fermer), `launcher-self-update`.
+Événements vers l'UI : `update-progress` (avec `etaSeconds`), `launch-error`, `update-warning`, `launcher-update-status`, `minecraft-status`, `minecraft-log`, `minecraft-progress`, `microsoft-device-code` (null = fermer), `launcher-self-update`.
 
 ### Règles du modpack
 

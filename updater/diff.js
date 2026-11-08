@@ -12,6 +12,7 @@ const fs = require("fs");
 const path = require("path");
 const { resolveInside } = require("./manifest");
 const { hashFile, mapLimit } = require("./util");
+const { UpdateError } = require("./errors");
 
 const lowerKey = (rel) => rel.toLowerCase();
 
@@ -47,7 +48,7 @@ function listJars(root, dirRel) {
  * @param {Map} p.hashCache        cache de hash (clé chemin|taille|mtime)
  * @param {function} p.onScan      (fait, total) pendant les calculs de hash
  */
-async function buildPlan({ manifest, gameRoot, lock, repair = false, hashCache = new Map(), onScan = () => {} }) {
+async function buildPlan({ manifest, gameRoot, lock, repair = false, hashCache = new Map(), onScan = () => {}, signal = null }) {
 
     const records = (lock && lock.files) || {};
     const manifestKeys = new Set(manifest.files.map((f) => lowerKey(f.path)));
@@ -92,6 +93,8 @@ async function buildPlan({ manifest, gameRoot, lock, repair = false, hashCache =
     let done = 0;
 
     await mapLimit(toHash, 4, async ({ file, dest, st }) => {
+
+        if (signal && signal.aborted) throw new UpdateError("ABORTED", "La mise à jour a été interrompue.");
 
         const key = `${file.path}|${st.size}|${Math.floor(st.mtimeMs)}`;
         let sha = hashCache.get(key);

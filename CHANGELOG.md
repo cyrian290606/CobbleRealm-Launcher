@@ -14,6 +14,8 @@ Ce fichier présente, version après version, ce qui change pour les joueurs.
 - Suivi du téléchargement plus complet : barre de progression, fichier en cours, nombre de fichiers et vitesse.
 - Si tu n'as pas de connexion Internet, tu peux lancer la version déjà installée (avec un avertissement).
 - Le launcher se met désormais à jour tout seul.
+- Le temps restant estimé s'affiche pendant les téléchargements.
+- Tu peux annuler un téléchargement : ce qui est déjà reçu est conservé, et il reprend ensuite sans tout recommencer.
 - Nouveau menu du compte Microsoft : tu peux changer de compte ou te déconnecter depuis le launcher.
 - Fenêtre de connexion Microsoft plus complète : boutons pour copier le code, rouvrir la page ou annuler, avec le temps restant avant l'expiration du code.
 
@@ -28,6 +30,9 @@ Ce fichier présente, version après version, ce qui change pour les joueurs.
 - Quand une erreur survient, un message clair en français explique ce qui s'est passé, avec des boutons adaptés : Réessayer, Réparer l'installation, Copier le rapport ou Obtenir de l'aide.
 - Le bouton « Copier le rapport » prépare un résumé à envoyer à l'équipe en cas de problème, sans aucune information personnelle (compte, pseudo, mots de passe ou nom de ton ordinateur).
 - Tu es maintenant prévenu si Minecraft s'arrête à cause d'une erreur.
+- La zone de téléchargement est plus claire : pourcentage, temps restant, fichier en cours, nombre de fichiers, volume et vitesse.
+- La zone du bouton JOUER garde une taille stable quand un téléchargement, un avertissement ou un message s'affiche : le bouton ne bouge plus.
+- Le message « nouvelle version du launcher prête » s'affiche dans la barre de gauche, avec un bouton pour redémarrer.
 - Quand tu n'es pas connecté, le compte s'affiche en gris avec une indication claire pour te connecter (il apparaissait en vert, comme si tout allait bien).
 - Le compte Microsoft et la fenêtre de connexion peuvent s'utiliser au clavier (Entrée, flèches, Tab, Échap).
 - L'annonce s'adapte à la taille de ta fenêtre : sur une petite fenêtre, elle se réduit et un bouton « Lire la suite » affiche le texte complet.

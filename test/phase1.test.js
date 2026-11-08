@@ -53,7 +53,9 @@ const upd = {
     lock: null,
     manifest: { minecraft: "1.21.1", fabricLoader: "0.18.4", java: 21, recommendedRamGb: 6 },
     checkResult: { ok: true, offline: false, valid: true, installedVersion: "10", remoteVersion: "10", updateAvailable: false, filesToDownload: 0, bytesToDownload: 0 },
-    syncImpl: async () => ({ ok: true, offline: false, version: "10" })
+    syncImpl: async () => ({ ok: true, offline: false, version: "10" }),
+    cancelCalls: 0,
+    cancelResult: { cancelled: true }
 };
 
 const javaCalls = [];
@@ -113,6 +115,7 @@ const fakes = {
             check: async () => { upd.checkCalls++; return upd.checkResult; },
             sync: async () => { upd.syncCalls++; calls.push("sync"); return upd.syncImpl(); },
             repair: async () => { upd.repairCalls++; return { ok: true, version: "10" }; },
+            cancel: () => { upd.cancelCalls++; return upd.cancelResult; },
             getManifest: async () => { upd.manifestCalls++; if (!upd.manifest) throw new Error("hors-ligne"); return upd.manifest; }
         })
     },
@@ -318,7 +321,7 @@ test("Mise à jour en échec : le jeu ne démarre JAMAIS, erreur lisible envoyé
     assert.deepStrictEqual(err, {
         code: "CORRUPT", title: "Mise à jour impossible",
         message: "Le fichier « a.jar » est resté corrompu après 3 essais.",
-        actions: ["retry", "repair", "copy", "help"], canRepair: true
+        actions: ["retry", "repair", "copy", "help"], canRepair: true, severity: "error"
     });
     assert.deepStrictEqual(counts(), { debug: 0, data: 0, progress: 0, close: 0 });
 
@@ -661,6 +664,36 @@ test("Connexion annulée pendant JOUER : message « Connexion annulée », rien 
     assert.strictEqual(error.code, "MICROSOFT_CANCELLED");
     assert.deepStrictEqual(error.actions, ["retry"]);
     assert.deepStrictEqual(calls, ["sync", "auth"]);
+});
+
+/* ---------- Groupe 4 : annulation du téléchargement ---------- */
+
+test("Annuler la mise à jour : demandé à l'updater, origine inconnue refusée", async () => {
+    reset();
+    upd.cancelCalls = 0;
+    upd.cancelResult = { cancelled: true };
+    const r = await ipc["cancel-update"](trusted(sender()));
+    assert.ok(r.success && r.cancelled);
+    assert.strictEqual(upd.cancelCalls, 1);
+
+    upd.cancelResult = { cancelled: false, reason: "installing" };
+    const late = await ipc["cancel-update"](trusted(sender()));
+    assert.deepStrictEqual([late.success, late.cancelled, late.reason], [true, false, "installing"]);
+
+    const refused = await ipc["cancel-update"]({ sender: sender() });
+    assert.strictEqual(refused.success, false);
+    assert.strictEqual(upd.cancelCalls, 2);
+});
+
+test("Mise à jour annulée par le joueur : simple information (pas une erreur rouge), le jeu ne démarre pas", async () => {
+    reset();
+    upd.syncImpl = async () => { throw Object.assign(new Error("Mise à jour annulée. Tu pourras la reprendre quand tu veux : les fichiers déjà téléchargés sont conservés."), { code: "CANCELLED" }); };
+    const { r, error } = await launchAndGetError();
+    assert.strictEqual(error.code, "UPDATE_CANCELLED");
+    assert.strictEqual(error.severity, "info");
+    assert.deepStrictEqual(error.actions, ["retry"]);
+    assert.strictEqual(r.success, false);
+    assert.deepStrictEqual(calls, ["sync"], "ni connexion ni jeu");
 });
 
 /* ---------- Phase 5 : versions pilotées par le manifest ---------- */
