@@ -1096,7 +1096,8 @@ function getDefaultRam() {
  * une valeur inconnue ou abîmée retombe toujours sur la valeur par défaut.
  */
 const UI_SCALES = ["auto", 1, 1.1, 1.25, 1.5];
-const ON_LAUNCH_CHOICES = ["keep", "minimize", "close"];
+/* « Fermer le launcher » n'est volontairement pas proposé : cela couperait les tuyaux de sortie du jeu. */
+const ON_LAUNCH_CHOICES = ["keep", "minimize"];
 const MOTION_CHOICES = ["auto", "on", "off"];
 
 const SETTINGS_DEFAULTS = {
@@ -1293,6 +1294,60 @@ function applyZoom(win) {
 
     } catch { /* le zoom est un confort, jamais bloquant */ }
 }
+
+/* ==============================
+   COMPORTEMENT PENDANT LA PARTIE
+============================== */
+
+let minimizedForGame = false;
+
+function getMainWindow() {
+
+    const win =
+        mainWindow && !mainWindow.isDestroyed()
+            ? mainWindow
+            : BrowserWindow.getAllWindows()[0];
+
+    return win && !win.isDestroyed() ? win : null;
+}
+
+/* Réglage « Réduire pendant la partie » : le launcher se réduit au lancement... */
+function minimizeForGame() {
+
+    if (readLauncherSettings().onLaunch !== "minimize") {
+        return;
+    }
+
+    const win = getMainWindow();
+
+    if (win) {
+        win.minimize();
+        minimizedForGame = true;
+    }
+}
+
+/* ... et revient à l'écran quand Minecraft se ferme. */
+function restoreAfterGame() {
+
+    if (!minimizedForGame) {
+        return;
+    }
+
+    minimizedForGame = false;
+
+    const win = getMainWindow();
+
+    if (win) {
+
+        if (win.isMinimized()) {
+            win.restore();
+        }
+
+        win.show();
+        win.focus();
+    }
+}
+
 
 function applyZoomToAllWindows() {
 
@@ -1517,8 +1572,35 @@ handle(
             launcher: app.getVersion(),
             pack: installed.valid ? installed.version : null,
             minecraft: versions.minecraft,
-            fabric: versions.fabricLoader
+            fabric: versions.fabricLoader,
+            java: versions.java
         };
+    }
+);
+
+
+/* Ouvre le dossier du jeu : l'adresse est choisie par le launcher, jamais par la page. */
+handle(
+    "open-game-folder",
+
+    async () => {
+
+        try {
+
+            const root = getCobbleRealmRoot();
+
+            fs.mkdirSync(root, { recursive: true });
+
+            const failure = await shell.openPath(root);
+
+            return failure
+                ? { success: false, error: "Impossible d'ouvrir le dossier du jeu." }
+                : { success: true };
+
+        } catch {
+
+            return { success: false, error: "Impossible d'ouvrir le dossier du jeu." };
+        }
     }
 );
 
@@ -2020,6 +2102,8 @@ handle(
                         );
                     }
 
+                    restoreAfterGame();
+
                     removeGameListeners();
                 };
 
@@ -2058,6 +2142,8 @@ handle(
             }
 
             gameStarted = true;
+
+            minimizeForGame();
 
             safeSend(
                 event.sender,

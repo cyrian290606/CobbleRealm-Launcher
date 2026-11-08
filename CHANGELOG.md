@@ -15,6 +15,9 @@ Ce fichier présente, version après version, ce qui change pour les joueurs.
 - Si tu n'as pas de connexion Internet, tu peux lancer la version déjà installée (avec un avertissement).
 - Le launcher se met désormais à jour tout seul.
 - La page Changelog affiche maintenant les vraies nouveautés du launcher, mises à jour en ligne sans avoir à réinstaller. Sans connexion, la dernière version connue ou celle intégrée au launcher s'affiche.
+- La page Paramètres est complète : mémoire (RAM) avec la valeur recommandée mise en avant et un avertissement utile, ouverture du dossier du jeu, réparation de l'installation en un clic, taille de l'interface, rappel des raccourcis clavier et informations de version.
+- Le launcher peut se réduire pendant que tu joues et revient tout seul quand Minecraft se ferme (réglage « Pendant la partie »).
+- Bouton « Copier les informations » dans « À propos » pour faciliter l'aide de l'équipe, sans donnée personnelle.
 - Le temps restant estimé s'affiche pendant les téléchargements.
 - Tu peux annuler un téléchargement : ce qui est déjà reçu est conservé, et il reprend ensuite sans tout recommencer.
 - Nouveau menu du compte Microsoft : tu peux changer de compte ou te déconnecter depuis le launcher.

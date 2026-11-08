@@ -372,7 +372,7 @@ const MEASURE = `(() => {
   const ALT = 1, CTRL = 2;
   const visibleView = () => ev("['homeView','changelogView','consoleView','settingsView'].find((id) => document.getElementById(id).style.display !== 'none')");
 
-  const roles = await ev("({ ok: [...document.querySelectorAll('.menu-item')].every((i) => i.getAttribute('role') === 'button' && i.tabIndex === 0), current: [...document.querySelectorAll('.menu-item[aria-current]')].map((i) => i.id), status: document.getElementById('launcherUpdateStatus').getAttribute('role'), ram: !!document.getElementById('ramSelect').getAttribute('aria-label'), log: document.getElementById('consoleOutput').getAttribute('role') })");
+  const roles = await ev("({ ok: [...document.querySelectorAll('.menu-item')].every((i) => i.getAttribute('role') === 'button' && i.tabIndex === 0), current: [...document.querySelectorAll('.menu-item[aria-current]')].map((i) => i.id), status: document.getElementById('launcherUpdateStatus').getAttribute('role'), ram: !!(document.getElementById('ramSelect').getAttribute('aria-label') || document.getElementById('ramSelect').getAttribute('aria-labelledby')), log: document.getElementById('consoleOutput').getAttribute('role') })");
   check("rôles : menu = boutons au clavier, page courante annoncée, statut et journal étiquetés", roles.ok && JSON.stringify(roles.current) === '["homeButton"]' && roles.status === "status" && roles.ram && roles.log === "log", JSON.stringify(roles));
 
   await chord(ALT, "2", "Digit2", 50);
@@ -483,6 +483,70 @@ const MEASURE = `(() => {
   const back = zoomOf({ dpr: await ev("devicePixelRatio") });
   check("réglage « taille de l'interface » : 125 % appliqué tout de suite, puis retour à l'automatique", Math.abs(manual - 1.25) < 0.01 && Math.abs(back - 1.5) < 0.01, `manuel ${manual.toFixed(2)}, auto ${back.toFixed(2)}`);
   await realSize(1184, 661);
+
+  /* ---- Groupe 9 : page Paramètres ---- */
+  await size(1200, 700);
+  await ev("document.getElementById('settingsButton').click()");
+  await sleep(500);
+  const initial = await ev("({ ram: [...document.getElementById('ramSelect').options].map(o => o.textContent), hint: document.getElementById('ramHint').textContent, cards: [...document.querySelectorAll('.settings-card h2')].map(h => h.textContent) })");
+  check("paramètres : 5 sections (Minecraft, Installation, Launcher, Raccourcis, À propos)", JSON.stringify(initial.cards) === JSON.stringify(["Minecraft", "Installation", "Launcher", "Raccourcis clavier", "À propos"]), JSON.stringify(initial.cards));
+  check("RAM : valeur recommandée repérée dans la liste et indiquée", initial.ram.some((t) => /\(recommandé\)/.test(t)) && /^Recommandé pour CobbleRealm : \d+ Go\.$/.test(initial.hint), JSON.stringify(initial));
+
+  for (const [w, h] of SIZES) {
+    await size(w, h);
+    const m = await ev(`(() => { const page = document.querySelector('.settings-page'), pr = page.getBoundingClientRect(), issues = [];
+      if (page.scrollWidth > page.clientWidth + 1) issues.push('défilement horizontal');
+      for (const c of document.querySelectorAll('.settings-card')) { const r = c.getBoundingClientRect(); if (r.right > pr.right + 1 || r.left < pr.left - 1) issues.push('carte qui déborde : ' + c.querySelector('h2').textContent); }
+      for (const e of document.querySelectorAll('.settings-card select, .settings-card button, .settings-card .switch')) { const r = e.getBoundingClientRect(), c = e.closest('.settings-card').getBoundingClientRect(); if (r.right > c.right + 1 || r.left < c.left - 1) issues.push('contrôle hors de sa carte : ' + (e.id || e.textContent.trim().slice(0, 20))); }
+      for (const t of document.querySelectorAll('.setting-row strong')) { if (t.scrollWidth > t.clientWidth + 1) issues.push('titre coupé : ' + t.textContent); }
+      if (page.scrollHeight <= page.clientHeight && h < 700) issues.push('page non défilable alors que le contenu dépasse');
+      return issues; })()`);
+    check(`page Paramètres — ${w}×${h}`, m.length === 0, m.join(" ; "));
+    if ([900, 1200].includes(w)) await shot(`g9-parametres-${w}x${h}.png`);
+  }
+  await size(1200, 700);
+
+  /* réglages réellement enregistrés (dossier de données isolé) puis relus */
+  await ev("(() => { const s = document.getElementById('onLaunchSelect'); s.value = 'minimize'; s.dispatchEvent(new Event('change')); const n = document.getElementById('notificationsToggle'); n.checked = false; n.dispatchEvent(new Event('change')); const m = document.getElementById('motionSelect'); m.value = 'on'; m.dispatchEvent(new Event('change')); })()");
+  await sleep(700);
+  const savedMsg = await ev("document.getElementById('settingsSaved').textContent");
+  await ev("loadSettingsPage()"); await sleep(500);
+  const persisted = await ev("({ onLaunch: document.getElementById('onLaunchSelect').value, notif: document.getElementById('notificationsToggle').checked, motion: document.getElementById('motionSelect').value })");
+  check("réglages : modifiés, enregistrés (« Enregistré ✓ ») et retrouvés après rechargement", /Enregistré/.test(savedMsg) && persisted.onLaunch === "minimize" && persisted.notif === false && persisted.motion === "on", savedMsg + " " + JSON.stringify(persisted));
+
+  /* RAM : « Valeur recommandée » */
+  await ev("(() => { const r = document.getElementById('ramSelect'); r.value = '2'; r.dispatchEvent(new Event('change')); })()");
+  await sleep(300);
+  const low = await ev("({ warn: document.getElementById('ramWarning').hidden ? '' : document.getElementById('ramWarning').textContent, reset: document.getElementById('ramReset').disabled })");
+  await ev("document.getElementById('ramReset').click()"); await sleep(400);
+  const after = await ev("({ val: Number(document.getElementById('ramSelect').value), warn: document.getElementById('ramWarning').hidden, reset: document.getElementById('ramReset').disabled })");
+  check("RAM : trop bas -> avertissement ; « Valeur recommandée » rétablit et masque l'avertissement", /saccader/.test(low.warn) && !low.reset && after.warn && after.reset, JSON.stringify([low, after]));
+
+  /* taille de l'interface depuis la page (mesurée sur la vraie fenêtre, sans simulation d'écran) */
+  await send("Emulation.clearDeviceMetricsOverride");
+  await ev("window.cobbleRealm.devResizeWindow(1184, 661)");
+  await sleep(500);
+  await ev("(() => { const u = document.getElementById('uiScaleSelect'); u.value = '1.25'; u.dispatchEvent(new Event('change')); })()");
+  await sleep(600);
+  const zoomed = await ev("devicePixelRatio");
+  await ev("(() => { const u = document.getElementById('uiScaleSelect'); u.value = 'auto'; u.dispatchEvent(new Event('change')); })()");
+  await sleep(400);
+  check("« Taille de l'interface » appliquée immédiatement depuis la page", zoomed / base.dpr > 1.2 && zoomed / base.dpr < 1.3, "ratio " + (zoomed / base.dpr).toFixed(2));
+
+  /* « À propos » : versions réelles */
+  const about = await ev("({ l: document.getElementById('aboutLauncher').textContent, mc: document.getElementById('aboutMinecraft').textContent, fab: document.getElementById('aboutFabric').textContent, j: document.getElementById('aboutJava').textContent, p: document.getElementById('aboutPack').textContent })");
+  check("À propos : versions du launcher, de Minecraft, de Fabric et de Java ; modpack non installé indiqué", about.l === "v" + require("../package.json").version && /^\d/.test(about.mc) && /^\d/.test(about.fab) && /^Java \d+$/.test(about.j) && about.p === "pas encore installé", JSON.stringify(about));
+
+  /* parcours au clavier de la page */
+  await ev("document.getElementById('settingsButton').focus()");
+  let sel = null;
+  for (let i = 0; i < 15 && !(sel && sel.id === "ramSelect"); i++) {
+    await key("Tab", "Tab", 9);
+    sel = await ev("(() => { const e = document.activeElement, c = getComputedStyle(e); return { id: e.id, ring: c.outlineStyle !== 'none' && parseFloat(c.outlineWidth) >= 2 }; })()");
+  }
+  check("clavier : Tab atteint la liste de RAM et elle a un anneau de focus visible", sel.id === "ramSelect" && sel.ring, JSON.stringify(sel));
+  await ev("document.getElementById('homeButton').click()");
+  await ev("window.cobbleRealm.saveLauncherSettings({ onLaunch: 'keep', notifications: true, reduceMotion: 'auto', uiScale: 'auto' })");
 
   /* Aucune erreur dans la page */
   const problems = events.filter((e) => e.method === "Runtime.exceptionThrown" || (e.method === "Log.entryAdded" && e.params.entry.level === "error" && !/Failed to load resource|ERR_CONNECTION/.test(e.params.entry.text)));

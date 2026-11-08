@@ -1317,7 +1317,7 @@
     line-height: 1.5;
 }
 
-#ramSelect {
+.settings-page select {
     min-width: 120px;
     height: 42px;
 
@@ -1345,18 +1345,23 @@
     cursor: pointer;
 }
 
-#ramSelect:hover {
+.settings-page select:hover {
     border-color:
         rgba(89, 232, 255, 0.75);
 }
 
-#ramSelect:focus {
+.settings-page select:focus {
     box-shadow:
         0 0 0 3px rgba(54, 210, 255, 0.12),
         0 0 16px rgba(54, 210, 255, 0.18);
 }
 
-#ramSelect option {
+.settings-page select:focus-visible {
+    outline: 2px solid #63e7ff;
+    outline-offset: 3px;
+}
+
+.settings-page select option {
     color: white;
     background: #0a1830;
 }
@@ -1406,6 +1411,222 @@
                 font-size: 24px;
             }
         }
+
+/* =========================
+   PARAMÈTRES
+========================= */
+
+/* barres de défilement fines, aux couleurs du launcher */
+.settings-page,
+.changelog-page,
+.console-page,
+.console-box,
+.news-modal-card {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(99, 231, 255, 0.45) transparent;
+}
+
+.settings-page .settings-card {
+    margin-bottom: 20px;
+}
+
+.settings-page .settings-card h2 {
+    margin-top: 0;
+}
+
+.settings-saved {
+    margin-left: 12px;
+
+    color: #41e5aa;
+
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.setting-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.setting-button {
+    padding: 9px 14px;
+
+    border-radius: 10px;
+    border: 1px solid rgba(99, 231, 255, 0.45);
+
+    color: white;
+    background: rgba(99, 231, 255, 0.14);
+
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 700;
+
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color 0.2s, border-color 0.2s, opacity 0.2s;
+}
+
+.setting-button:hover:not(:disabled) {
+    background: rgba(99, 231, 255, 0.28);
+}
+
+.setting-button:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+
+.setting-hint {
+    margin-top: 6px !important;
+
+    color: #8ea2bb !important;
+}
+
+.setting-warning {
+    margin-top: 6px !important;
+
+    color: #ffd37a !important;
+}
+
+.setting-warning[hidden] {
+    display: none;
+}
+
+.settings-page select {
+    min-width: 170px;
+}
+
+/* interrupteur */
+.switch {
+    position: relative;
+    display: inline-block;
+    flex-shrink: 0;
+    width: 50px;
+    height: 28px;
+}
+
+.switch input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.switch-track {
+    position: absolute;
+    inset: 0;
+
+    border-radius: 999px;
+
+    background: rgba(255, 255, 255, 0.16);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+
+    pointer-events: none;
+    transition: background-color 0.2s, border-color 0.2s;
+}
+
+.switch-track::after {
+    content: "";
+
+    position: absolute;
+    top: 3px;
+    left: 3px;
+
+    width: 20px;
+    height: 20px;
+
+    border-radius: 50%;
+
+    background: #ffffff;
+
+    transition: transform 0.2s;
+}
+
+.switch input:checked + .switch-track {
+    background: linear-gradient(90deg, #22d5f3, #6a63ff);
+    border-color: rgba(126, 242, 255, 0.7);
+}
+
+.switch input:checked + .switch-track::after {
+    transform: translateX(22px);
+}
+
+.switch input:focus-visible + .switch-track {
+    outline: 2px solid #63e7ff;
+    outline-offset: 3px;
+}
+
+.shortcuts-list {
+    margin: 0;
+    padding: 0;
+
+    list-style: none;
+
+    color: #c5d1e1;
+
+    font-size: 15px;
+    line-height: 2;
+}
+
+.shortcuts-list li {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+}
+
+.shortcuts-list li > span {
+    min-width: 210px;
+}
+
+kbd {
+    padding: 2px 8px;
+
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    border-bottom-width: 2px;
+
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.08);
+
+    font-family: inherit;
+    font-size: 13px;
+}
+
+.about-grid {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 6px 22px;
+
+    margin: 0 0 18px;
+
+    color: #c5d1e1;
+
+    font-size: 15px;
+}
+
+.about-grid dt {
+    color: #8ea2bb;
+}
+
+.about-grid dd {
+    margin: 0;
+
+    color: #ffffff;
+    font-weight: 700;
+}
+
+.about-actions {
+    justify-content: flex-start;
+}
+
+.setting-row {
+    flex-wrap: wrap;
+}
 
 /* =========================
    INFORMATIONS : SERVEUR, CHANGELOG, CHARGEMENT
@@ -2281,8 +2502,10 @@
         <h1>Paramètres</h1>
 
         <p>
-            Configurez CobbleRealm Launcher.
+            Configure CobbleRealm Launcher.
+            <span class="settings-saved" id="settingsSaved" role="status" aria-live="polite"></span>
         </p>
+
 
         <div class="settings-card">
 
@@ -2290,21 +2513,133 @@
 
             <div class="setting-row">
                 <div>
-                    <strong>Mémoire RAM</strong>
-                    <p>
-                        Quantité de mémoire utilisée par Minecraft.
-                    </p>
+                    <strong id="ramLabel">Mémoire RAM</strong>
+                    <p>Quantité de mémoire utilisée par Minecraft.</p>
+                    <p class="setting-hint" id="ramHint"></p>
+                    <p class="setting-warning" id="ramWarning" hidden></p>
                 </div>
 
-                <select id="ramSelect" aria-label="Mémoire RAM allouée à Minecraft">
-                    <option value="4">4 Go</option>
-                    <option value="6">6 Go</option>
-                    <option value="8" selected>8 Go</option>
-                    <option value="10">10 Go</option>
-                    <option value="12">12 Go</option>
-                    <option value="16">16 Go</option>
+                <div class="setting-controls">
+                    <select id="ramSelect" aria-labelledby="ramLabel"></select>
+                    <button class="setting-button" id="ramReset">Valeur recommandée</button>
+                </div>
+            </div>
+
+        </div>
+
+
+        <div class="settings-card">
+
+            <h2>Installation</h2>
+
+            <div class="setting-row">
+                <div>
+                    <strong>Dossier du jeu</strong>
+                    <p>Ouvre le dossier où CobbleRealm est installé (mods, captures, sauvegardes).</p>
+                </div>
+                <button class="setting-button" id="openFolder">Ouvrir le dossier</button>
+            </div>
+
+            <div class="setting-row">
+                <div>
+                    <strong>Réparer l'installation</strong>
+                    <p>Vérifie tous les fichiers et remplace ceux qui sont manquants ou abîmés.</p>
+                    <p class="setting-hint" id="repairStatus" role="status" aria-live="polite"></p>
+                </div>
+                <button class="setting-button" id="settingsRepair">Réparer</button>
+            </div>
+
+        </div>
+
+
+        <div class="settings-card">
+
+            <h2>Launcher</h2>
+
+            <div class="setting-row">
+                <div>
+                    <strong id="onLaunchLabel">Pendant la partie</strong>
+                    <p>Ce que fait le launcher quand Minecraft démarre. Il revient à l'écran quand le jeu se ferme.</p>
+                </div>
+                <select id="onLaunchSelect" aria-labelledby="onLaunchLabel">
+                    <option value="keep">Rester ouvert</option>
+                    <option value="minimize">Se réduire</option>
                 </select>
             </div>
+
+            <div class="setting-row">
+                <div>
+                    <strong id="notificationsLabel">Notifications Windows</strong>
+                    <p>Prévient quand une mise à jour est terminée ou en cas de problème, si le launcher n'est pas au premier plan.</p>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" id="notificationsToggle" aria-labelledby="notificationsLabel">
+                    <span class="switch-track"></span>
+                </label>
+            </div>
+
+            <div class="setting-row">
+                <div>
+                    <strong id="uiScaleLabel">Taille de l'interface</strong>
+                    <p>Automatique : l'interface s'agrandit avec la fenêtre sur les grands écrans.</p>
+                </div>
+                <select id="uiScaleSelect" aria-labelledby="uiScaleLabel">
+                    <option value="auto">Automatique</option>
+                    <option value="1">100 %</option>
+                    <option value="1.1">110 %</option>
+                    <option value="1.25">125 %</option>
+                    <option value="1.5">150 %</option>
+                </select>
+            </div>
+
+            <div class="setting-row">
+                <div>
+                    <strong id="motionLabel">Réduire les animations</strong>
+                    <p>Automatique : suit le réglage « animations » de Windows.</p>
+                </div>
+                <select id="motionSelect" aria-labelledby="motionLabel">
+                    <option value="auto">Automatique</option>
+                    <option value="on">Oui, réduire</option>
+                    <option value="off">Non</option>
+                </select>
+            </div>
+
+        </div>
+
+
+        <div class="settings-card">
+
+            <h2>Raccourcis clavier</h2>
+
+            <ul class="shortcuts-list">
+                <li><span><kbd>Tab</kbd></span> Passer à l'élément suivant</li>
+                <li><span><kbd>Entrée</kbd> ou <kbd>Espace</kbd></span> Valider l'élément sélectionné</li>
+                <li><span><kbd>Alt</kbd> + <kbd>1</kbd> … <kbd>4</kbd></span> Accueil, Changelog, Console, Paramètres</li>
+                <li><span><kbd>Ctrl</kbd> + <kbd>Entrée</kbd></span> Lancer le jeu</li>
+                <li><span><kbd>Échap</kbd></span> Fermer une fenêtre ou un menu</li>
+            </ul>
+
+        </div>
+
+
+        <div class="settings-card">
+
+            <h2>À propos</h2>
+
+            <dl class="about-grid">
+                <dt>Launcher</dt><dd id="aboutLauncher">…</dd>
+                <dt>Modpack</dt><dd id="aboutPack">…</dd>
+                <dt>Minecraft</dt><dd id="aboutMinecraft">…</dd>
+                <dt>Fabric</dt><dd id="aboutFabric">…</dd>
+                <dt>Java</dt><dd id="aboutJava">…</dd>
+            </dl>
+
+            <div class="setting-controls about-actions">
+                <button class="setting-button" id="aboutCopy">Copier les informations</button>
+                <button class="setting-button" id="aboutHelp">Obtenir de l'aide</button>
+            </div>
+
+            <p class="setting-hint">Les informations copiées ne contiennent aucune donnée personnelle (ni compte, ni pseudo, ni nom d'utilisateur).</p>
 
         </div>
 
@@ -2896,94 +3231,221 @@ const ramSelect =
     document.getElementById("ramSelect");
 
 /* =========================
-   PARAMÈTRES RAM
+   PARAMÈTRES
 ========================= */
 
-async function loadRamSetting() {
+const settingsSaved = document.getElementById("settingsSaved");
+const ramHint = document.getElementById("ramHint");
+const ramWarning = document.getElementById("ramWarning");
+const ramReset = document.getElementById("ramReset");
+const onLaunchSelect = document.getElementById("onLaunchSelect");
+const notificationsToggle = document.getElementById("notificationsToggle");
+const uiScaleSelect = document.getElementById("uiScaleSelect");
+const motionSelect = document.getElementById("motionSelect");
+const repairStatus = document.getElementById("repairStatus");
+const settingsRepairButton = document.getElementById("settingsRepair");
+
+let settingsSavedTimer = null;
+let recommendedRam = 6;
+
+function flashSettingsSaved(text) {
+
+    settingsSaved.textContent = text;
+
+    clearTimeout(settingsSavedTimer);
+    settingsSavedTimer = setTimeout(() => { settingsSaved.textContent = ""; }, 2500);
+}
+
+async function saveSetting(changes) {
 
     try {
 
-        const settings =
-            await window.cobbleRealm
-                .getLauncherSettings();
+        const result = await window.cobbleRealm.saveLauncherSettings(changes);
 
-        if (
-            settings &&
-            settings.ram
-        ) {
+        flashSettingsSaved(result && result.success ? "Enregistré ✓" : "L'enregistrement a échoué");
 
-            /*
-             * Les choix proposés dépendent de la RAM de l'ordinateur
-             * (au moins 2 Go restent réservés à Windows).
-             */
-            const maxRam =
-                Number(settings.maxRam) || 16;
-
-            const choices =
-                [2, 3, 4, 5, 6, 8, 10, 12, 14, 16]
-                    .filter(
-                        (gb) => gb <= maxRam
-                    );
-
-            if (!choices.includes(maxRam)) {
-                choices.push(maxRam);
-            }
-
-            ramSelect.innerHTML = "";
-
-            for (const gb of choices) {
-
-                const option =
-                    document.createElement("option");
-
-                option.value = String(gb);
-                option.textContent = `${gb} Go`;
-
-                ramSelect.appendChild(option);
-            }
-
-            ramSelect.value =
-                String(settings.ram);
-        }
+        return result;
 
     } catch (error) {
 
-        console.error(
-            "Erreur chargement RAM :",
-            error
-        );
+        console.error("Erreur sauvegarde paramètres :", error);
+        flashSettingsSaved("L'enregistrement a échoué");
+
+        return null;
     }
 }
 
+/* Indication sous la liste de RAM : jamais d'avertissement inutile. */
+function updateRamNotes() {
 
-ramSelect.addEventListener(
-    "change",
+    const chosen = Number(ramSelect.value);
 
-    async () => {
+    ramHint.textContent = "Recommandé pour CobbleRealm : " + recommendedRam + " Go.";
 
-        const ram =
-            Number(ramSelect.value);
+    let warning = "";
 
-        try {
-
-            await window.cobbleRealm
-                .saveLauncherSettings({
-                    ram: ram
-                });
-
-            console.log(
-                `[CobbleRealm] RAM sauvegardée : ${ram} Go`
-            );
-
-        } catch (error) {
-
-            console.error(
-                "Erreur sauvegarde RAM :",
-                error
-            );
-        }
+    if (chosen < recommendedRam) {
+        warning = "C'est moins que la valeur recommandée : le jeu risque de saccader.";
+    } else if (chosen > Math.max(recommendedRam + 4, 8)) {
+        warning = "Plus de mémoire n'accélère pas le jeu et peut ralentir ton ordinateur.";
     }
-);
+
+    ramWarning.textContent = warning;
+    ramWarning.hidden = !warning;
+    ramReset.disabled = chosen === recommendedRam;
+}
+
+async function loadSettingsPage() {
+
+    try {
+
+        const settings = await window.cobbleRealm.getLauncherSettings();
+
+        if (!settings || !settings.ram) {
+            return;
+        }
+
+        /*
+         * Les choix de RAM dépendent de l'ordinateur (au moins 2 Go restent réservés à Windows)
+         * et la valeur recommandée est repérée dans la liste.
+         */
+        const maxRam = Number(settings.maxRam) || 16;
+        recommendedRam = Number(settings.recommendedRam) || recommendedRam;
+
+        const choices = [2, 3, 4, 5, 6, 8, 10, 12, 14, 16].filter((gb) => gb <= maxRam);
+
+        for (const extra of [maxRam, recommendedRam]) {
+            if (!choices.includes(extra) && extra <= maxRam) {
+                choices.push(extra);
+            }
+        }
+
+        choices.sort((x, y) => x - y);
+
+        ramSelect.innerHTML = "";
+
+        for (const gb of choices) {
+
+            const option = document.createElement("option");
+
+            option.value = String(gb);
+            option.textContent = gb + " Go" + (gb === recommendedRam ? " (recommandé)" : "");
+
+            ramSelect.appendChild(option);
+        }
+
+        ramSelect.value = String(settings.ram);
+
+        onLaunchSelect.value = settings.onLaunch;
+        notificationsToggle.checked = settings.notifications !== false;
+        uiScaleSelect.value = String(settings.uiScale);
+        motionSelect.value = settings.reduceMotion;
+
+        if (typeof applyMotionSetting === "function") {
+            applyMotionSetting(settings.reduceMotion);
+        }
+
+        updateRamNotes();
+
+    } catch (error) {
+
+        console.error("Erreur chargement des paramètres :", error);
+    }
+}
+
+async function loadRamSetting() {
+
+    await loadSettingsPage();
+}
+
+ramSelect.addEventListener("change", async () => {
+
+    updateRamNotes();
+    await saveSetting({ ram: Number(ramSelect.value) });
+});
+
+ramReset.addEventListener("click", async () => {
+
+    ramSelect.value = String(recommendedRam);
+    updateRamNotes();
+    await saveSetting({ ram: recommendedRam });
+});
+
+onLaunchSelect.addEventListener("change", () => saveSetting({ onLaunch: onLaunchSelect.value }));
+notificationsToggle.addEventListener("change", () => saveSetting({ notifications: notificationsToggle.checked }));
+uiScaleSelect.addEventListener("change", () => saveSetting({ uiScale: uiScaleSelect.value }));
+
+motionSelect.addEventListener("change", async () => {
+
+    await saveSetting({ reduceMotion: motionSelect.value });
+
+    if (typeof applyMotionSetting === "function") {
+        applyMotionSetting(motionSelect.value);
+    }
+});
+
+document.getElementById("openFolder").addEventListener("click", async () => {
+
+    let result = null;
+
+    try {
+        result = await window.cobbleRealm.openGameFolder();
+    } catch { /* message ci-dessous */ }
+
+    if (!result || !result.success) {
+        flashSettingsSaved("Impossible d'ouvrir le dossier");
+    }
+});
+
+settingsRepairButton.addEventListener("click", async () => {
+
+    if (minecraftLaunching) {
+
+        repairStatus.textContent = "Indisponible pendant le lancement de Minecraft.";
+
+        return;
+    }
+
+    settingsRepairButton.disabled = true;
+    minecraftLaunching = true;
+    repairStatus.textContent = "Vérification des fichiers en cours...";
+
+    try {
+
+        const result = await window.cobbleRealm.repairInstallation();
+
+        repairStatus.textContent = result && result.success
+            ? "Installation vérifiée : tout est en ordre ✓"
+            : "La réparation n'a pas pu se terminer. Les détails sont affichés sur l'écran d'accueil.";
+
+    } catch {
+
+        repairStatus.textContent = "La réparation n'a pas pu se terminer.";
+
+    } finally {
+
+        minecraftLaunching = false;
+        settingsRepairButton.disabled = false;
+    }
+});
+
+document.getElementById("aboutCopy").addEventListener("click", async (event) => {
+
+    const button = event.currentTarget;
+    const original = button.textContent;
+
+    let result = null;
+
+    try {
+        result = await window.cobbleRealm.copySupportReport();
+    } catch { /* message ci-dessous */ }
+
+    button.textContent = result && result.success ? "Informations copiées ✓" : "Copie impossible";
+
+    setTimeout(() => { button.textContent = original; }, 2500);
+});
+
+document.getElementById("aboutHelp").addEventListener("click", () => window.cobbleRealm.openDiscord());
 
 const playText =
     document.getElementById("playText");
@@ -4205,6 +4667,12 @@ const FALLBACK_NEWS = {
 
             chipPack.textContent = info.pack ? "★ CobbleRealm v" + info.pack : "★ CobbleRealm";
             chipPack.hidden = false;
+
+            document.getElementById("aboutLauncher").textContent = "v" + info.launcher;
+            document.getElementById("aboutPack").textContent = info.pack ? "v" + info.pack : "pas encore installé";
+            document.getElementById("aboutMinecraft").textContent = info.minecraft;
+            document.getElementById("aboutFabric").textContent = info.fabric;
+            document.getElementById("aboutJava").textContent = "Java " + info.java;
 
         } catch (error) {
 

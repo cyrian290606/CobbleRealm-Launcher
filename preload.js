@@ -251,6 +251,12 @@ contextBridge.exposeInMainWorld(
                 height
             ),
 
+        /* Ouvre le dossier du jeu (adresse choisie par le launcher) */
+        openGameFolder: () =>
+            ipcRenderer.invoke(
+                "open-game-folder"
+            ),
+
         /* Annule le téléchargement en cours (les fichiers déjà reçus sont conservés) */
         cancelUpdate: () =>
             ipcRenderer.invoke(

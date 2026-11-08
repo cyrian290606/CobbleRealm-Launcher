@@ -60,8 +60,12 @@ const upd = {
 
 const javaCalls = [];
 const fakeWindows = [];
+const openedPaths = [];
+let openPathFailure = "";
 const makeFakeWindow = (width, height) => {
-    const win = { zoom: 1, size: [width, height], isDestroyed: () => false, getContentSize: () => win.size, on() {},
+    const win = { zoom: 1, size: [width, height], minimized: false, calls: [], isDestroyed: () => false, getContentSize: () => win.size, on() {},
+        minimize() { win.minimized = true; win.calls.push("minimize"); }, restore() { win.minimized = false; win.calls.push("restore"); },
+        isMinimized: () => win.minimized, show() { win.calls.push("show"); }, focus() { win.calls.push("focus"); },
         webContents: { send() {}, isDestroyed: () => false, getZoomFactor: () => win.zoom, setZoomFactor: (f) => { win.zoom = f; }, setVisualZoomLevelLimits: async () => {} } };
     return win;
 };
@@ -98,7 +102,7 @@ const fakes = {
         BrowserWindow: class { static getAllWindows() { return fakeWindows; } },
         Menu: { setApplicationMenu() {} },
         ipcMain: { handle: (name, fn) => { ipc[name] = fn; } },
-        shell: { openExternal: async (u) => { opened.push(u); } },
+        shell: { openExternal: async (u) => { opened.push(u); }, openPath: async (p) => { openedPaths.push(p); return openPathFailure; } },
         clipboard: { writeText: (t) => { clipboardText = t; } }
     },
     "minecraft-launcher-core": { Client: FakeClient },
@@ -569,9 +573,13 @@ test("Réglages : valeurs valides conservées, fusion sans perte, origine inconn
     assert.deepStrictEqual([s.ram, s.uiScale, s.onLaunch, s.reduceMotion, s.notifications], [Math.min(3, limits.maxRam), 1.25, "minimize", "on", false]);
 
     // un changement partiel ne perd rien
-    await ipc["save-launcher-settings"](trusted(sender()), { onLaunch: "close" });
+    await ipc["save-launcher-settings"](trusted(sender()), { onLaunch: "keep" });
     s = await ipc["get-launcher-settings"](trusted(sender()));
-    assert.deepStrictEqual([s.uiScale, s.onLaunch, s.reduceMotion, s.notifications], [1.25, "close", "on", false]);
+    assert.deepStrictEqual([s.uiScale, s.onLaunch, s.reduceMotion, s.notifications], [1.25, "keep", "on", false]);
+
+    // « fermer le launcher » n'est pas un choix valide (cela couperait les journaux du jeu)
+    await ipc["save-launcher-settings"](trusted(sender()), { onLaunch: "close" });
+    assert.strictEqual((await ipc["get-launcher-settings"](trusted(sender()))).onLaunch, "keep");
 
     // « 1.25 » écrit sous forme de texte est accepté, une échelle non prévue est refusée
     await ipc["save-launcher-settings"](trusted(sender()), { uiScale: "1.5" });
@@ -605,6 +613,75 @@ test("Zoom automatique : 100 % sur petit écran, grandit avec la fenêtre jusqu'
     assert.strictEqual(win.zoom, 1.5);
     fakeWindows.length = 0;
     fs.rmSync(path.join(userData, "settings.json"), { force: true });
+});
+
+/* ---------- Groupe 9 : paramètres ---------- */
+
+test("Dossier du jeu : ouvre exactement le dossier du jeu (jamais une adresse venue de la page), le crée si besoin", async () => {
+    reset();
+    openedPaths.length = 0;
+    const root = path.join(appData, ".cobblerealm");
+    fs.rmSync(root, { recursive: true, force: true });
+
+    const r = await ipc["open-game-folder"](trusted(sender()), "C:\\Windows\\System32");
+    assert.ok(r.success);
+    assert.deepStrictEqual(openedPaths, [root]);
+    assert.ok(fs.existsSync(root), "dossier créé");
+
+    openPathFailure = "Le chemin est introuvable";
+    const failed = await ipc["open-game-folder"](trusted(sender()));
+    assert.deepStrictEqual([failed.success, /Impossible/.test(failed.error)], [false, true]);
+    assert.ok(!/introuvable/i.test(failed.error), "pas de détail système");
+    openPathFailure = "";
+
+    openedPaths.length = 0;
+    const refused = await ipc["open-game-folder"]({ sender: sender() });
+    assert.strictEqual(refused.success, false);
+    assert.deepStrictEqual(openedPaths, []);
+});
+
+test("Pendant la partie : « Se réduire » minimise au lancement et revient à la fermeture du jeu ; « Rester ouvert » ne touche à rien", async () => {
+    reset();
+    fakeWindows.length = 0;
+    const win = makeFakeWindow(1184, 661);
+    fakeWindows.push(win);
+
+    await ipc["save-launcher-settings"](trusted(sender()), { onLaunch: "keep" });
+    await ipc["launch-minecraft"](trusted(sender()), { ram: 4 });
+    theClient.emit("close", 0);
+    assert.deepStrictEqual(win.calls, [], "rester ouvert : aucune action");
+
+    await ipc["save-launcher-settings"](trusted(sender()), { onLaunch: "minimize" });
+    await ipc["launch-minecraft"](trusted(sender()), { ram: 4 });
+    assert.deepStrictEqual(win.calls, ["minimize"]);
+    assert.strictEqual(win.minimized, true);
+    theClient.emit("close", 0);
+    assert.deepStrictEqual(win.calls, ["minimize", "restore", "show", "focus"], "le launcher revient à l'écran");
+
+    // un arrêt avec erreur ramène aussi le launcher (pour afficher le message)
+    win.calls.length = 0;
+    await ipc["launch-minecraft"](trusted(sender()), { ram: 4 });
+    theClient.emit("close", 1);
+    assert.ok(win.calls.includes("restore"));
+
+    // échec de démarrage : le launcher n'est jamais réduit
+    win.calls.length = 0;
+    launchBehavior = "null";
+    await ipc["launch-minecraft"](trusted(sender()), { ram: 4 });
+    assert.deepStrictEqual(win.calls, []);
+
+    fakeWindows.length = 0;
+    fs.rmSync(path.join(userData, "settings.json"), { force: true });
+});
+
+test("Infos de version : Java inclus pour la page « À propos »", async () => {
+    reset();
+    upd.manifest = { minecraft: "1.21.1", fabricLoader: "0.18.4", java: 21, recommendedRamGb: 6 };
+    upd.lock = { version: "10", minecraft: "1.21.1", fabricLoader: "0.18.4", java: 21, recommendedRamGb: 6 };
+    const info = await ipc["get-app-info"](trusted(sender()));
+    assert.deepStrictEqual([info.launcher, info.pack, info.minecraft, info.fabric, info.java], ["2.0.0", "10", "1.21.1", "0.18.4", 21]);
+    const s = await ipc["get-launcher-settings"](trusted(sender()));
+    assert.strictEqual(s.recommendedRam, Math.min(s.maxRam, 6));
 });
 
 /* ---------- Groupe 3 : compte Microsoft ---------- */
