@@ -6,7 +6,8 @@
  */
 
 const path = require("path");
-const { getJson, checkUrl } = require("./http");
+const { getBuffer, checkUrl } = require("./http");
+const { verifyManifestSignature, MESSAGES: SIGNATURE_MESSAGES } = require("./signature");
 const { UpdateError, toUpdateError, manifestInvalidError } = require("./errors");
 
 /* Domaines autorisés */
@@ -133,11 +134,14 @@ function validateManifest(manifest, { allowLocal = false } = {}) {
 }
 
 /**
- * Télécharge et valide le manifest (3 essais, timeout).
+ * Télécharge, VÉRIFIE LA SIGNATURE (sauf requireSignature: false, réservé aux tests et au mode développement)
+ * puis valide le manifest (3 essais, timeout). La signature porte sur les octets exacts reçus :
+ * rien n'est interprété avant qu'elle soit vérifiée.
  * L'erreur retournée est toujours une UpdateError lisible.
  */
 async function fetchManifest(url, {
-    retries = 3, retryDelayMs = 800, timeoutMs = 15000, allowLocal = false, signal = null
+    retries = 3, retryDelayMs = 800, timeoutMs = 15000, allowLocal = false, signal = null,
+    requireSignature = true, trustedKeys = null
 } = {}) {
 
     let lastError = null;
@@ -149,11 +153,26 @@ async function fetchManifest(url, {
         try {
             const separator = url.includes("?") ? "&" : "?";
 
-            const manifest = await getJson(`${url}${separator}t=${Date.now()}`, {
-                allowedHosts: MANIFEST_HOSTS, allowLocal, timeoutMs, signal
-            });
+            const requestOptions = { allowedHosts: MANIFEST_HOSTS, allowLocal, timeoutMs, signal };
+            const stamp = `${separator}t=${Date.now()}`;
 
-            return validateManifest(manifest, { allowLocal });
+            const bytes = await getBuffer(`${url}${stamp}`, requestOptions);
+
+            if (requireSignature) {
+
+                let sig = null;
+
+                try {
+                    sig = JSON.parse((await getBuffer(`${url.split("?")[0]}.sig${stamp.replace("&", "?")}`, { ...requestOptions, maxBytes: 16 * 1024 })).toString("utf8"));
+                } catch (sigFailure) {
+                    /* « pas de fichier de signature » = manifest non signé (refus) ; une panne réseau reste une panne réseau. */
+                    if (!(sigFailure && (sigFailure.httpStatus === 404 || sigFailure instanceof SyntaxError))) throw sigFailure;
+                }
+
+                verifyManifestSignature(bytes, sig, trustedKeys);
+            }
+
+            return validateManifest(JSON.parse(bytes.toString("utf8")), { allowLocal });
 
         } catch (error) {
 
@@ -166,8 +185,8 @@ async function fetchManifest(url, {
             }
 
             /* Inutile de réessayer : l'erreur ne changera pas. */
-            if (["MANIFEST_INVALID", "FORBIDDEN_HOST", "ABORTED"].includes(lastError.code)) throw lastError;
-            if (error && error.httpStatus === 404) throw new UpdateError("SERVER", lastError.message, { cause: error });
+            if (["MANIFEST_INVALID", "MANIFEST_SIGNATURE", "FORBIDDEN_HOST", "ABORTED"].includes(lastError.code)) throw lastError;
+            if (error && error.httpStatus === 404 && lastError.code !== "MANIFEST_SIGNATURE") throw new UpdateError("SERVER", lastError.message, { cause: error });
         }
     }
 

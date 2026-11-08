@@ -27,6 +27,7 @@ Launcher Electron (Windows uniquement, UI et logs en français) pour le modpack 
 - `npm run build` : crée l'installeur NSIS Windows dans `dist/` (via `tools/build.js` : electron-builder avec nouvelle tentative automatique si l'antivirus verrouille un fichier, erreur EPERM/EBUSY). Pour tester sans écraser `dist/` : `npm run build -- --config.directories.output=build-out`.
 - `npm run release` : build + publication sur GitHub Releases (variable `GH_TOKEN` requise) pour l'auto-update.
 - `node tools/publish.js <dossierSource> --version x.y.z` : prépare une publication du modpack (manifest v2 + fichiers nommés par leur SHA-256 + `UPLOAD.md`). Ne publie rien, n'écrit jamais dans le dossier source. `--dry-run` simule ; `--check <manifest>` vérifie que les URL répondent.
+- `node tools/keys.js init --dir <dossier HORS dépôt>` : génère la clé de signature principale + la clé de secours (clés privées chiffrées, jamais dans le dépôt). `node tools/publish.js ... --sign <clé.key.json>` signe le manifest. Procédure (sauvegarde, rotation, perte, vol) : [tools/SIGNATURES.md](tools/SIGNATURES.md).
 - `node tools/test-server.js <publish-out> [--port 8787] [--speed Ko/s] [--cut-after octets]` : serveur local pour répéter une mise à jour.
 - `node test/e2e-dev.js` : test de bout en bout avec le vrai Electron en mode développement isolé (ouvre une fenêtre).
 - Pas de linter ni de bundler (JS CommonJS brut).
@@ -47,6 +48,7 @@ Pas de dossier `src/` : tout est à la racine. **Tout nouveau fichier .js du pro
   - `apply.js` : déplacement vers le jeu, quarantaine `.removed/` (30 jours), `lock.json` écrit EN DERNIER.
   - `lock.js` : `lock.json` n'existe qu'entre deux mises à jour terminées (sinon `lock.prev.json` = indice, installation invalide).
   - `index.js` : `createUpdater()` → `check()`, `sync()`, `repair()`, `status()`. Hors-ligne autorisé seulement si l'installation est valide et le manifest jamais lu.
+  - `signature.js` + `trusted-keys.json` : signature Ed25519 du manifest (sur les octets exacts de `manifest.json`, fichier `manifest.json.sig`). Le launcher n'embarque que des clés PUBLIQUES (principale + secours, liste `revoked`). **Signature obligatoire** : `createUpdater` l'exige par défaut ; seul le mode développement isolé peut la désactiver (`COBBLEREALM_ALLOW_UNSIGNED=1`) ou utiliser d'autres clés de TEST (`COBBLEREALM_TRUST_KEYS_FILE`). Signature refusée = rien n'est téléchargé, pas de mode hors-ligne, code `MANIFEST_SIGNATURE`. **Ne jamais committer de clé privée** (`node tools/keys.js check-repo`, test automatique).
   - `http.js`, `errors.js` (messages joueur en français), `util.js`.
 - [runtime.js](runtime.js) : Java >= version du manifest (runtime CobbleRealm, JAVA_HOME, PATH, sinon JRE Temurin téléchargé via l'API Adoptium, SHA-256 vérifié).
 - [fabric.js](fabric.js) : profil Fabric selon `minecraft`/`fabricLoader` du manifest (régénéré si ils changent).

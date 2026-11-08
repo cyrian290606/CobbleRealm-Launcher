@@ -24,7 +24,9 @@ const STAGING = ".staging";
 
 function createUpdater({
     gameRoot, manifestUrl, onProgress = () => {}, allowLocal = false,
-    fetchOptions = {}, downloadOptions = {}, hooks = {}, now = () => Date.now(), onDiagnostic = () => {}
+    fetchOptions = {}, downloadOptions = {}, hooks = {}, now = () => Date.now(), onDiagnostic = () => {},
+    /* Signature Ed25519 du manifest : obligatoire. false = tests / mode développement uniquement (jamais dans l'application installée). */
+    requireSignature = true, trustedKeys = null
 }) {
 
     const stagingDir = path.join(gameRoot, STAGING);
@@ -42,7 +44,7 @@ function createUpdater({
         if (force) manifestPromise = null;
 
         if (!manifestPromise) {
-            manifestPromise = fetchManifest(manifestUrl, { allowLocal, ...fetchOptions })
+            manifestPromise = fetchManifest(manifestUrl, { allowLocal, requireSignature, trustedKeys, ...fetchOptions })
                 .then((manifest) => { manifestLoaded = true; return manifest; })
                 .catch((error) => { manifestPromise = null; throw error; });
         }

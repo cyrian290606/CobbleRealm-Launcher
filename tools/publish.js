@@ -409,13 +409,16 @@ function summarizeChanges(previous, next) {
 
 /* ============================== sorties ============================== */
 
+/*
+ * Copie (jamais de lien physique) : avec un lien, modifier un fichier du dossier source APRÈS la préparation altérait
+ * aussi le fichier à envoyer, dont le nom (SHA-256) ne correspondait alors plus à son contenu.
+ * COPYFILE_FICLONE : copie « instantanée » sans occuper d'espace quand le disque le permet (ReFS, APFS...), sinon copie normale.
+ */
 function linkOrCopy(source, destination) {
 
     fs.mkdirSync(path.dirname(destination), { recursive: true });
     fs.rmSync(destination, { force: true });
-
-    try { fs.linkSync(source, destination); }
-    catch { fs.copyFileSync(source, destination); }
+    fs.copyFileSync(source, destination, fs.constants.COPYFILE_FICLONE);
 }
 
 function writeUploadGuide(outDir, manifest, newAssets, policy, channel) {
@@ -452,7 +455,7 @@ function writeUploadGuide(outDir, manifest, newAssets, policy, channel) {
     text += "```\nnode tools/publish.js --check publish-out/" + pagesPath + "\n```\n\n";
     text += "Ne passez à l'étape 3 que si le résultat est « Toutes les URL répondent ».\n\n";
     text += "## Étape 3 - Publier le manifest (GitHub Pages)\n\n";
-    text += `Copier \`publish-out/${pagesPath}\` vers \`${pagesPath}\` du dépôt, commit, push. `;
+    text += `Copier \`publish-out/${pagesPath}\` ET \`publish-out/${pagesPath}.sig\` (la signature : sans elle, les launchers refusent le manifest) vers \`${pagesPath}\` et \`${pagesPath}.sig\` du dépôt, commit, push. `;
     text += "Les launchers voient la nouvelle version après 1 à 2 minutes.\n\n";
     text += "## Retour arrière\n\n";
     text += "Remettre dans `" + pagesPath + "` un ancien manifest de `manifests/`. Les anciens fichiers restent en ligne.\n";
@@ -521,7 +524,7 @@ async function main(argv) {
     if (!sourceDir || !args.version) {
         console.error("Usage : node tools/publish.js <dossierSource> --version x.y.z " +
             "[--channel beta] [--out publish-out] [--dry-run] [--write-docs] [--check-urls] " +
-            "[--no-reuse] [--allow-empty-mods] [--force]\n" +
+            "[--no-reuse] [--allow-empty-mods] [--force] [--sign <clé.key.json>]\n" +
             "        node tools/publish.js --check <manifest.json | URL>");
         return 2;
     }
@@ -603,12 +606,24 @@ async function main(argv) {
     fs.mkdirSync(path.join(outDir, path.dirname(pagesRel)), { recursive: true });
     fs.writeFileSync(path.join(outDir, pagesRel), manifestText, "utf8");
 
+    /* Signature Ed25519 du manifest (octets exacts du fichier publié). */
+    let signed = null;
+
+    if (args.sign) {
+        const keys = require("./keys");
+        signed = keys.signFile(path.join(outDir, pagesRel), path.resolve(String(args.sign)), await keys.getPassphrase("la clé de signature"));
+        console.log(`Manifest signé avec la clé ${signed.keyId} (${signed.role}).`);
+    } else {
+        console.warn("ATTENTION : manifest NON signé (--sign <clé>). Les launchers refuseront de l'utiliser.");
+    }
+
     for (const asset of newAssets) linkOrCopy(asset.abs, path.join(outDir, `release-${asset.tag}`, asset.assetName));
 
     writeUploadGuide(outDir, manifest, newAssets, policy, channel);
 
     fs.mkdirSync(manifestsDir, { recursive: true });
     fs.writeFileSync(path.join(manifestsDir, `manifest-${manifest.version}.json`), manifestText, "utf8");
+    if (signed) fs.copyFileSync(path.join(outDir, pagesRel + ".sig"), path.join(manifestsDir, `manifest-${manifest.version}.json.sig`));
 
     if (args["write-docs"]) {
         const target = path.join(REPO_ROOT, pagesRel);

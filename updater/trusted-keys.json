@@ -1,0 +1,6 @@
+{
+  "_aide": "Clés PUBLIQUES de confiance du launcher (jamais de clé privée ici). Rempli par : node tools/keys.js init. Voir tools/SIGNATURES.md.",
+  "version": 1,
+  "keys": [],
+  "revoked": []
+}

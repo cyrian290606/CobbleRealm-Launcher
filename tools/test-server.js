@@ -20,12 +20,13 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 
-function createTestServer({ manifest = null, blobs = new Map(), faults = {} } = {}) {
+function createTestServer({ manifest = null, blobs = new Map(), faults = {}, signer = null } = {}) {
 
     const state = {
         manifest,                 // objet manifest servi sur /manifest.json
         blobs,                    // pathname -> Buffer
         faults: { cutAfter: {}, corrupt: new Set(), fail: {}, ignoreRange: false, redirect: {}, ...faults },
+        signer,                   // fonction de signature du manifest (ou null : manifest non signé)
         requests: [],             // { path, range }
         cutDone: new Set()
     };
@@ -46,6 +47,14 @@ function createTestServer({ manifest = null, blobs = new Map(), faults = {} } = 
 
         if (state.faults.redirect[pathname]) {
             res.writeHead(302, { Location: state.faults.redirect[pathname] }); return res.end();
+        }
+
+        /* Signature du manifest (signer : octets -> { alg, keyId, signature }). Absente si aucun signataire n'est configuré. */
+        if (pathname === "/manifest.json.sig") {
+            if (!state.signer) { res.writeHead(404); return res.end("non signé"); }
+            const body = Buffer.from(JSON.stringify(state.signer(Buffer.from(JSON.stringify(state.manifest)))));
+            res.writeHead(200, { "Content-Type": "application/json", "Content-Length": body.length });
+            return res.end(body);
         }
 
         if (pathname === "/manifest.json") {
@@ -111,7 +120,7 @@ function createTestServer({ manifest = null, blobs = new Map(), faults = {} } = 
 }
 
 /* Mode ligne de commande : sert un dossier produit par publish.js. */
-async function serveFolder(dir, { port = 8787, cutAfter = 0, speedKb = 0 } = {}) {
+async function serveFolder(dir, { port = 8787, cutAfter = 0, speedKb = 0, signKey = null } = {}) {
 
     const manifestFile = fs.existsSync(path.join(dir, "docs", "manifest.json"))
         ? path.join(dir, "docs", "manifest.json")
@@ -138,7 +147,16 @@ async function serveFolder(dir, { port = 8787, cutAfter = 0, speedKb = 0 } = {})
         else missing++;
     }
 
-    const server = createTestServer({ manifest, blobs });
+    /* Les URL du manifest sont réécrites vers ce serveur : la signature d'origine ne vaut plus, on re-signe avec une clé de TEST (--sign-key). */
+    let signer = null;
+
+    if (signKey) {
+        const sig = require("../updater/signature");
+        const privateKey = sig.decryptPrivateKey(JSON.parse(fs.readFileSync(signKey, "utf8")), process.env.COBBLEREALM_KEY_PASSPHRASE || "");
+        signer = (bytes) => sig.signBytes(bytes, privateKey);
+    }
+
+    const server = createTestServer({ manifest, blobs, signer });
 
     if (cutAfter > 0) for (const key of blobs.keys()) server.state.faults.cutAfter[key] = cutAfter;
     if (speedKb > 0) server.state.faults.throttleBytesPerSec = speedKb * 1024;
@@ -153,13 +171,13 @@ if (require.main === module) {
     const opt = (name) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : undefined; };
 
     if (!dir) {
-        console.error("Usage : node tools/test-server.js <dossier publish-out> [--port 8787] [--cut-after octets] [--speed Ko/s]");
+        console.error("Usage : node tools/test-server.js <dossier publish-out> [--port 8787] [--cut-after octets] [--speed Ko/s] [--sign-key clé-de-TEST.key.json (mot de passe : COBBLEREALM_KEY_PASSPHRASE)]");
         process.exit(2);
     }
 
     const port = Number(opt("port") || 8787);
 
-    serveFolder(path.resolve(dir), { port, cutAfter: Number(opt("cut-after") || 0), speedKb: Number(opt("speed") || 0) }).then(async ({ server, base, missing }) => {
+    serveFolder(path.resolve(dir), { port, cutAfter: Number(opt("cut-after") || 0), speedKb: Number(opt("speed") || 0), signKey: opt("sign-key") }).then(async ({ server, base, missing }) => {
         await server.listen(port);
         console.log(`Serveur de test : ${base}/manifest.json`);
         if (missing) console.warn(`Attention : ${missing} fichier(s) du manifest absents des dossiers release-*`);

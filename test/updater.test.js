@@ -55,7 +55,7 @@ async function setup() {
 
         updater(options = {}) {
             return createUpdater({
-                gameRoot: root, manifestUrl: `${base}/manifest.json`, allowLocal: true,
+                gameRoot: root, manifestUrl: `${base}/manifest.json`, allowLocal: true, requireSignature: false,
                 onProgress: (e) => events.push(e),
                 fetchOptions: { retryDelayMs: 1 },
                 downloadOptions: { retryDelayMs: 1 },

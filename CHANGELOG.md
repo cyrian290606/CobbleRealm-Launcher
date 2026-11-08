@@ -37,6 +37,7 @@ Ce fichier présente, version après version, ce qui change pour les joueurs.
 - Messages d'erreur plus clairs, en français, qui t'expliquent quoi faire.
 - Installation plus légère : le fichier d'installation du launcher est beaucoup plus petit.
 - Sécurité renforcée.
+- Les listes de mise à jour du modpack sont maintenant protégées par une signature : si elles ont été modifiées par quelqu'un d'autre que l'équipe CobbleRealm, le launcher les refuse et n'installe rien.
 - Quand une erreur survient, un message clair en français explique ce qui s'est passé, avec des boutons adaptés : Réessayer, Réparer l'installation, Copier le rapport ou Obtenir de l'aide.
 - Le bouton « Copier le rapport » prépare un résumé à envoyer à l'équipe en cas de problème, sans aucune information personnelle (compte, pseudo, mots de passe ou nom de ton ordinateur).
 - Tu es maintenant prévenu si Minecraft s'arrête à cause d'une erreur.

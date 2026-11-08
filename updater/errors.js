@@ -9,7 +9,7 @@ class UpdateError extends Error {
 
     /**
      * @param {string} code  OFFLINE | SERVER | CORRUPT | DISK_FULL | FILE_LOCKED |
-     *                       MANIFEST_INVALID | FORBIDDEN_HOST | MISSING_REMOTE | ABORTED | UNKNOWN
+     *                       MANIFEST_INVALID | MANIFEST_SIGNATURE | FORBIDDEN_HOST | MISSING_REMOTE | ABORTED | UNKNOWN
      */
     constructor(code, message, { cause = null, canRepair = false, details = null } = {}) {
         super(message);
@@ -31,6 +31,7 @@ const MESSAGES = {
     FILE_LOCKED: "Un fichier du jeu est utilisé par un autre programme. Ferme Minecraft et les autres launchers, puis réessaie.",
     MANIFEST_INVALID: "La liste de mise à jour reçue est invalide. Préviens l'équipe CobbleRealm si le problème continue.",
     FORBIDDEN_HOST: "Une adresse de téléchargement non autorisée a été refusée par sécurité. Préviens l'équipe CobbleRealm.",
+    MANIFEST_SIGNATURE: "La liste de mise à jour n'a pas pu être vérifiée : par sécurité, rien n'a été installé. Préviens l'équipe CobbleRealm.",
     ABORTED: "La mise à jour a été interrompue.",
     CANCELLED: "Mise à jour annulée. Tu pourras la reprendre quand tu veux : les fichiers déjà téléchargés sont conservés.",
     UNKNOWN: "Une erreur inattendue est survenue pendant la mise à jour. Réessaie, ou utilise « Réparer l'installation »."

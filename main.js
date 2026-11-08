@@ -15,6 +15,7 @@ const fs = require("fs");
 const os = require("os");
 const { pathToFileURL } = require("url");
 const windowState = require("./windowState");
+const { loadTrustedKeys } = require("./updater/signature");
 
 const {
     Client
@@ -263,6 +264,13 @@ const COBBLEREALM_MANIFEST_URL =
     (DEV_MODE && process.env.COBBLEREALM_MANIFEST_URL) ||
     "https://cyrian290606.github.io/CobbleRealm-Launcher/manifest.json";
 
+/*
+ * Signature du manifest : OBLIGATOIRE dans l'application installée. Seul le mode développement isolé (jamais l'installée)
+ * peut utiliser d'autres clés de confiance (clés de TEST) ou, explicitement, désactiver la vérification.
+ */
+const ALLOW_UNSIGNED_MANIFEST = DEV_MODE && process.env.COBBLEREALM_ALLOW_UNSIGNED === "1";
+const TRUST_KEYS_FILE = (DEV_MODE && process.env.COBBLEREALM_TRUST_KEYS_FILE) || undefined;
+
 const COBBLEREALM_NEWS_URL =
     (DEV_MODE && process.env.COBBLEREALM_NEWS_URL) ||
     "https://raw.githubusercontent.com/cyrian290606/CobbleRealm-Launcher/main/news.json";
@@ -426,6 +434,17 @@ function writeUpdateDiagnostic({ repair, version, installedVersion, entries }) {
 }
 
 
+function readTrustedKeys() {
+
+    try {
+        return loadTrustedKeys(TRUST_KEYS_FILE);
+    } catch {
+        /* liste illisible : aucune clé de confiance => tout manifest est refusé (jamais d'acceptation par défaut) */
+        return { keys: [], revoked: new Set() };
+    }
+}
+
+
 let updater = null;
 
 function getUpdater() {
@@ -436,6 +455,8 @@ function getUpdater() {
             gameRoot: getCobbleRealmRoot(),
             manifestUrl: COBBLEREALM_MANIFEST_URL,
             allowLocal: DEV_MODE,
+            requireSignature: !ALLOW_UNSIGNED_MANIFEST,
+            trustedKeys: readTrustedKeys(),
             onProgress: (event) => broadcast("update-progress", event),
             onDiagnostic: writeUpdateDiagnostic
         });

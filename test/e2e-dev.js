@@ -32,15 +32,22 @@ const check = (name, ok, detail = "") => { results.push(ok); log(`  ${ok ? "OK  
     { env: { ...process.env, PUBLISH_REPO_ROOT: path.join(tmp, "depot") }, encoding: "utf8" });
   check("publish.js prépare la publication", pub.status === 0, (pub.stdout.match(/Version .*/) || [pub.stderr])[0]);
 
-  /* 2. serveur de test (débit limité pour voir la progression) */
-  const server = spawn(process.execPath, [path.join(project, "tools", "test-server.js"), out, "--port", String(SERVER_PORT), "--speed", "400"], { stdio: ["ignore", "pipe", "pipe"] });
+  /* 2. clés de TEST (jamais de vraie clé) : le serveur signe le manifest, le launcher ne fait confiance qu'à la clé publique de test */
+  const testKeys = require(path.join(project, "tools", "keys.js")).generateKey("primary", "mot-de-passe-de-test-e2e");
+  const keyFile = path.join(tmp, "cle-de-test.key.json"), trustFile = path.join(tmp, "trusted-keys-test.json");
+  fs.writeFileSync(keyFile, JSON.stringify(testKeys.file));
+  fs.writeFileSync(trustFile, JSON.stringify({ version: 1, keys: [testKeys.entry], revoked: [] }));
+
+  /* 2b. serveur de test (débit limité pour voir la progression) */
+  const server = spawn(process.execPath, [path.join(project, "tools", "test-server.js"), out, "--port", String(SERVER_PORT), "--speed", "400", "--sign-key", keyFile],
+    { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, COBBLEREALM_KEY_PASSPHRASE: "mot-de-passe-de-test-e2e" } });
   await new Promise((resolve) => server.stdout.on("data", (d) => String(d).includes("Serveur de test") && resolve()));
 
   /* 3. Electron en mode développement isolé */
   const game = path.join(tmp, "jeu"), appdata = path.join(tmp, "Roaming");
   fs.mkdirSync(appdata, { recursive: true });
   const electron = require(path.join(project, "node_modules", "electron"));
-  const env = { ...process.env, APPDATA: appdata, COBBLEREALM_DEV: "1", COBBLEREALM_ROOT: game,
+  const env = { ...process.env, APPDATA: appdata, COBBLEREALM_DEV: "1", COBBLEREALM_ROOT: game, COBBLEREALM_TRUST_KEYS_FILE: trustFile,
     COBBLEREALM_MANIFEST_URL: `http://127.0.0.1:${SERVER_PORT}/manifest.json`, ELECTRON_ENABLE_LOGGING: "1",
     COBBLEREALM_CHANGELOG_URL: "http://127.0.0.1:1/CHANGELOG.md", COBBLEREALM_NEWS_URL: "http://127.0.0.1:1/news.json" };
   delete env.ELECTRON_RUN_AS_NODE;

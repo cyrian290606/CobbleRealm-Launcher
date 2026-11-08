@@ -130,4 +130,24 @@ async function getJson(urlString, options = {}) {
     return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
-module.exports = { request, getJson, checkUrl, isHostAllowed };
+/* Lit une réponse (octets bruts) de taille limitée. */
+async function getBuffer(urlString, options = {}) {
+
+    const maxBytes = options.maxBytes || 10 * 1024 * 1024;
+    const response = await request(urlString, options);
+    const chunks = [];
+    let total = 0;
+
+    for await (const chunk of response) {
+        total += chunk.length;
+        if (total > maxBytes) {
+            response.destroy();
+            throw Object.assign(new Error("réponse trop volumineuse"), { httpStatus: 413 });
+        }
+        chunks.push(chunk);
+    }
+
+    return Buffer.concat(chunks);
+}
+
+module.exports = { request, getJson, getBuffer, checkUrl, isHostAllowed };

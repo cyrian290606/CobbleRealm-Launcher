@@ -4,3 +4,6 @@ build-out/
 *.tmp
 *.zip
 publish-out/
+*.key.json
+keys/
+*.pem
