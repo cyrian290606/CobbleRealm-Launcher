@@ -8,48 +8,76 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Launcher Electron (Windows uniquement, UI et logs en français) pour le modpack Minecraft **CobbleRealm** (Cobblemon, Minecraft 1.21.1 + Fabric). Il connecte le joueur via Microsoft, installe/met à jour le modpack et Java 21, puis lance le jeu avec `minecraft-launcher-core` (MCLC).
+Launcher Electron (Windows uniquement, UI et logs en français) pour le modpack Minecraft **CobbleRealm** (Cobblemon, Minecraft 1.21.1 + Fabric). Il connecte le joueur via Microsoft, synchronise le modpack fichier par fichier, installe Java si besoin, puis lance le jeu avec `minecraft-launcher-core` (MCLC).
 
 ## Commandes
 
 - `npm start` : lance l'app en dev (`electron .`).
-- `npm run build` : crée l'installeur NSIS Windows dans `dist/` (electron-builder).
-- `node test/phase1.test.js` : tests automatiques (faux Electron/MCLC/auth, sans réseau ni compte Microsoft).
-- `node tools/publish.js <dossierSource> --version x.y.z` : prépare une publication du modpack (manifest schéma v2 + fichiers nommés par leur SHA-256 + `UPLOAD.md`). Catégories dans [tools/policy.json](tools/policy.json) (`managed` / `default` / `preserved`). Ne publie rien, n'écrit jamais dans le dossier source. `--dry-run` pour simuler, `--check <manifest>` pour vérifier que les URL répondent. Tests : `node test/publish.test.js`.
-- Il n'y a ni linter, ni étape de build du frontend (pas de bundler, JS CommonJS brut).
-- Pour tester `npm start` sans toucher à l'installation réelle, définir `APPDATA` vers un dossier temporaire. Pour tester le build sans écraser `dist/` : `npm run build -- --config.directories.output=build-out`.
+- `npm test` : toutes les suites de tests automatiques (sans réseau, sans compte Microsoft).
+- `npm run build` : crée l'installeur NSIS Windows dans `dist/` (electron-builder). Pour tester sans écraser `dist/` : `npm run build -- --config.directories.output=build-out`.
+- `npm run release` : build + publication sur GitHub Releases (variable `GH_TOKEN` requise) pour l'auto-update.
+- `node tools/publish.js <dossierSource> --version x.y.z` : prépare une publication du modpack (manifest v2 + fichiers nommés par leur SHA-256 + `UPLOAD.md`). Ne publie rien, n'écrit jamais dans le dossier source. `--dry-run` simule ; `--check <manifest>` vérifie que les URL répondent.
+- `node tools/test-server.js <publish-out> [--port 8787] [--speed Ko/s] [--cut-after octets]` : serveur local pour répéter une mise à jour.
+- `node test/e2e-dev.js` : test de bout en bout avec le vrai Electron en mode développement isolé (ouvre une fenêtre).
+- Pas de linter ni de bundler (JS CommonJS brut).
+
+### Mode développement isolé (jamais l'installation réelle)
+
+Uniquement avec `npm start` (app non empaquetée) ET `COBBLEREALM_DEV=1` : `COBBLEREALM_ROOT` (dossier de jeu), `COBBLEREALM_MANIFEST_URL` (ex. `http://127.0.0.1:8787/manifest.json`). Ignorés dans l'application installée. Ajouter `-- --user-data-dir=<dossier temporaire>` pour isoler les réglages et la session Microsoft. **Définir `APPDATA` ne suffit PAS sous Windows** : Electron lit le vrai dossier Roaming via l'API système (`app.getPath("appData")`), donc sans `COBBLEREALM_ROOT` on travaille sur l'installation réelle `%APPDATA%\.cobblerealm`. Ne jamais cliquer JOUER / lancer `sync()` dans un test sans `COBBLEREALM_ROOT`.
 
 ## Architecture
 
-Pas de dossier `src/` : tout est à la racine.
+Pas de dossier `src/` : tout est à la racine. **Tout nouveau fichier .js du processus principal doit être ajouté à `build.files` dans package.json**, sinon il manquera dans l'installeur.
 
-- [main.js](main.js) (~2900 lignes) : processus principal. Contient tout : config, mise à jour du modpack, installation Java/Fabric, handlers IPC (`ipcMain.handle`), lancement du jeu, et la séquence de démarrage dans `app.whenReady`.
-- [auth.js](auth.js) : OAuth Microsoft via `@azure/msal-node` (device code flow). Le cache de tokens est chiffré avec `safeStorage` dans `userData/microsoft-session.dat`.
-- [minecraftAuth.js](minecraftAuth.js) : chaîne Xbox Live → XSTS → Minecraft Services (token + droits + profil), exposée par `loginMinecraft(msAccessToken, onLog)`.
-- [preload.js](preload.js) : pont `contextIsolation` ; expose l'API IPC au renderer. Tout nouveau canal IPC doit être déclaré à la fois dans main.js et preload.js.
-- [index.html](index.html) (~2700 lignes) : renderer, HTML + CSS + JS inline dans un seul fichier. `nodeIntegration` est désactivé.
-- [manifest.json](manifest.json) et [news.json](news.json) : fichiers **distants**, lus depuis `raw.githubusercontent.com/cyrian290606/CobbleRealm-Launcher/main/` (branche `main`), pas depuis le disque. Les modifier et pousser sur `main` met à jour tous les launchers déployés.
+- [main.js](main.js) : processus principal. Handlers IPC (via `handle()` qui vérifie l'origine), fenêtre (sandbox, CSP), séquence de lancement, vérification au démarrage.
+- [updater/](updater/) : mise à jour du modpack par fichiers.
+  - `manifest.js` : téléchargement + validation du manifest v2, liste blanche de domaines, validation des chemins (`resolveInside`).
+  - `diff.js` : plan (à télécharger / adopter / retirer) par comparaison de contenu (SHA-256) et lock.json ; mode strict `mods/`, liste `remove`.
+  - `download.js` : flux vers `.staging/<sha>.part`, reprise Range, 3 essais, vérification taille + SHA-256.
+  - `apply.js` : déplacement vers le jeu, quarantaine `.removed/` (30 jours), `lock.json` écrit EN DERNIER.
+  - `lock.js` : `lock.json` n'existe qu'entre deux mises à jour terminées (sinon `lock.prev.json` = indice, installation invalide).
+  - `index.js` : `createUpdater()` → `check()`, `sync()`, `repair()`, `status()`. Hors-ligne autorisé seulement si l'installation est valide et le manifest jamais lu.
+  - `http.js`, `errors.js` (messages joueur en français), `util.js`.
+- [runtime.js](runtime.js) : Java >= version du manifest (runtime CobbleRealm, JAVA_HOME, PATH, sinon JRE Temurin téléchargé via l'API Adoptium, SHA-256 vérifié).
+- [fabric.js](fabric.js) : profil Fabric selon `minecraft`/`fabricLoader` du manifest (régénéré si ils changent).
+- [launcherUpdates.js](launcherUpdates.js) : auto-update du launcher (electron-updater, GitHub Releases), inactif en développement.
+- [auth.js](auth.js), [minecraftAuth.js](minecraftAuth.js) : Microsoft (device code, cache chiffré `safeStorage`) puis Xbox → XSTS → Minecraft.
+- [preload.js](preload.js) : pont `contextIsolation`. Tout nouveau canal IPC doit être déclaré dans main.js ET preload.js.
+- [index.html](index.html) : renderer, HTML + CSS + JS inline (CSP : pas de ressource externe).
+- [news.json](news.json) : annonces, lues sur `raw.githubusercontent.com/.../main/news.json`.
+- [tools/](tools/) : outils administrateur (publication, serveur de test, `policy.json`). Hors installeur.
+- `manifests/` : archive des manifests publiés (retour arrière). `docs/` : manifest servi par GitHub Pages.
 
-### Flux de démarrage (`app.whenReady`)
+### Flux de démarrage
 
-1. Ouvre la fenêtre, attend `did-finish-load`.
-2. Charge les news (avec fallback `getDefaultLauncherNews()` ; `normalizeLauncherNews` accepte plusieurs formes de JSON).
-3. Compare `~/AppData/Roaming/.cobblerealm/version.json` à `manifest.version` (`compareVersions`, semver numérique).
-4. Si MAJ : télécharge chaque ZIP de `manifest.downloads[]`, valide tous les ZIP en extraction temporaire, sauvegarde `options.txt`/`optionsof.txt`/`servers.dat`, **supprime** les dossiers synchronisés (`mods`, `config`, `resourcepacks`, etc. : liste `foldersToSync`), extrait, restaure les fichiers joueur, retire les mods de `incompatibleMods`, puis écrit `version.json`.
-5. Envoie l'état au renderer via le canal `launcher-update-status` (`checking`/`downloading`/`download-progress`/`installing`/`install-progress`/`ready`/`error`). Le bouton JOUER reste bloqué tant que le statut n'est pas `ready`.
+Fenêtre → news → `updater.check()` (lecture seule, rien n'est téléchargé) → message de statut (« Mise à jour disponible — vX (N fichiers, Y Mo) », « CobbleRealm à jour », « Hors-ligne … »). Une seule requête du manifest par session ; l'interface réutilise le même résultat (`check-cobblerealm-update`).
 
 ### Flux de lancement (`launch-minecraft`)
 
-Login Microsoft (device code si session expirée) → `loginMinecraft` → `ensureJava21` (JRE Adoptium téléchargé dans `.cobblerealm/runtime/java21`) → `ensureFabricProfile` (profil JSON Fabric de meta.fabricmc.net, écrit dans `.cobblerealm/versions/`) → `launcher.launch()` de MCLC avec `version.custom` = profil Fabric. Retours vers l'UI via `minecraft-status`, `minecraft-log`, `minecraft-progress`, `microsoft-device-code`.
+1. `updater.sync()` (télécharge + applique). **Le jeu ne démarre jamais si cette étape échoue** : événement `update-error` {code, message, canRepair} + boutons Réessayer / Réparer. Hors-ligne avec installation valide : `update-warning` puis jeu sur la version installée.
+2. Login Microsoft (device code affiché si session expirée) → `loginMinecraft`.
+3. `ensureJava` + `ensureFabricProfile` avec les versions du manifest (sinon dernier lock.json, sinon valeurs de secours `FALLBACK_VERSIONS`).
+4. `launcher.launch()` de MCLC. Écouteurs retirés à la fermeture du jeu.
+
+Événements vers l'UI : `update-progress`, `update-error`, `update-warning`, `launcher-update-status`, `minecraft-status`, `minecraft-log`, `minecraft-progress`, `microsoft-device-code` (null = fermer), `launcher-self-update`.
+
+### Règles du modpack
+
+- Catégories (tools/policy.json) : `managed` (aligné sur le serveur, écrase), `default` (copié seulement s'il n'existe pas), `preserved` (jamais publié ni touché).
+- On ne supprime que ce que `lock.json` indique comme installé. Tout retrait va en quarantaine `.removed/<date>/` (purgée après 30 jours, uniquement ce dossier). Fichiers inconnus hors `mods/` : jamais touchés.
+- Mode strict `mods/` : tout `.jar` absent du manifest est mis en quarantaine (un mod en trop empêche de se connecter). Garde-fou : ignoré si le manifest ne contient aucun fichier dans ce dossier.
+- `manifest.remove` : liste de fichiers exacts à retirer (ancienne liste `incompatibleMods`).
+- Version du manifest : `schema: 2`. Comparaison par contenu, donc un retour à un ancien manifest fonctionne.
 
 ### Points importants
 
-- Versions codées en dur dans main.js : `MINECRAFT_VERSION` (1.21.1), `FABRIC_LOADER_VERSION`, `JAVA_21_URL`. Le client ID Azure est dans auth.js.
-- Tout le jeu vit dans `%APPDATA%/.cobblerealm`. Les réglages du launcher (`ram`) sont dans `userData/settings.json`, bornés par `clampRam` (2 Go min, max = RAM système − 2 Go, plafonné à 16).
-- Les logs MCLC contiennent des tokens : toujours passer par `redactSecrets()` avant console/IPC, et utiliser `safeSend()` pour envoyer au renderer (fenêtre possiblement détruite).
-- Pour publier une nouvelle version du modpack : mettre à jour `version` et `downloads` dans [manifest.json](manifest.json) et le pousser sur `main`. La version du launcher lui-même est dans `package.json` (indépendante).
+- Le nom du paquet (`cobblerealm-launcher`) et l'`appId` ne doivent PAS changer : le dossier `userData` (réglages, session Microsoft) et la mise à jour en place de l'installeur en dépendent.
+- Tout le jeu vit dans `%APPDATA%/.cobblerealm`. Réglages du launcher dans `userData/settings.json`, RAM bornée par `clampRam` (2 Go min, max = RAM système − 2 Go, plafonné à 16).
+- Les logs MCLC contiennent des tokens : toujours passer par `redactSecrets()` avant console/IPC, et `safeSend()` pour envoyer au renderer.
+- Le manifest v2 est servi par GitHub Pages (`/docs`) ; les fichiers sont des assets de GitHub Releases du dépôt `cyrian290606/CobbleRealm-Pack` (à créer, voir `policy.json` > `hosting`). Les releases du launcher sont dans `CobbleRealm-Launcher`.
+- Domaines autorisés pour les téléchargements : `github.com`, `*.githubusercontent.com` (redirections incluses) ; manifest : + `cyrian290606.github.io` ; Java : `api.adoptium.net` ; Fabric : `meta.fabricmc.net`.
 
-### Incohérences connues (vérifier avant de s'y fier)
+### Incohérences connues
 
-- Le [manifest.json](manifest.json) de `developpe` est une copie périmée (v1.0.5, ZIP `modpackV5`) : la référence réelle est celle de `origin/main` (v10, deux ZIP). Le format attendu par main.js est `downloads` (tableau).
-- Le dépôt local `main` a du retard sur `origin/main` (manifest v10 en ligne, extraction ZIP réécrite). Une fusion future aura des conflits sur `main.js` et `manifest.json` : pour `manifest.json`, garder la version d'`origin/main`.
+- Le [manifest.json](manifest.json) de `developpe` est une copie périmée de l'ANCIEN format (v1.0.5, ZIP `modpackV5`) : la référence réelle est celle de `origin/main` (v10, deux ZIP). Les anciens launchers (1.0.x) continuent à lire ce fichier sur `main` : ne pas le modifier avant d'avoir décidé de figer l'ancien système.
+- Le dépôt local `main` a du retard sur `origin/main`. Une fusion future aura des conflits sur `main.js` (réécrit ici) et `manifest.json` (garder celui d'`origin/main`).

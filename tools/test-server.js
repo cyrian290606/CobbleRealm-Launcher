@@ -85,7 +85,22 @@ function createTestServer({ manifest = null, blobs = new Map(), faults = {} } = 
             return;
         }
 
-        res.end(blob.subarray(start));
+        const body = blob.subarray(start);
+        const bytesPerSecond = state.faults.throttleBytesPerSec;
+
+        if (!bytesPerSecond) return res.end(body);
+
+        /* Débit limité (pour voir la barre de progression) */
+        let position = 0;
+        const step = Math.max(1, Math.floor(bytesPerSecond / 10));
+        const tick = () => {
+            if (res.destroyed) return;
+            if (position >= body.length) return res.end();
+            res.write(body.subarray(position, position + step));
+            position += step;
+            setTimeout(tick, 100);
+        };
+        tick();
     });
 
     return {
@@ -96,7 +111,7 @@ function createTestServer({ manifest = null, blobs = new Map(), faults = {} } = 
 }
 
 /* Mode ligne de commande : sert un dossier produit par publish.js. */
-async function serveFolder(dir, { port = 8787, cutAfter = 0 } = {}) {
+async function serveFolder(dir, { port = 8787, cutAfter = 0, speedKb = 0 } = {}) {
 
     const manifestFile = fs.existsSync(path.join(dir, "docs", "manifest.json"))
         ? path.join(dir, "docs", "manifest.json")
@@ -126,6 +141,7 @@ async function serveFolder(dir, { port = 8787, cutAfter = 0 } = {}) {
     const server = createTestServer({ manifest, blobs });
 
     if (cutAfter > 0) for (const key of blobs.keys()) server.state.faults.cutAfter[key] = cutAfter;
+    if (speedKb > 0) server.state.faults.throttleBytesPerSec = speedKb * 1024;
 
     return { server, base, missing };
 }
@@ -137,13 +153,13 @@ if (require.main === module) {
     const opt = (name) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : undefined; };
 
     if (!dir) {
-        console.error("Usage : node tools/test-server.js <dossier publish-out> [--port 8787] [--cut-after octets]");
+        console.error("Usage : node tools/test-server.js <dossier publish-out> [--port 8787] [--cut-after octets] [--speed Ko/s]");
         process.exit(2);
     }
 
     const port = Number(opt("port") || 8787);
 
-    serveFolder(path.resolve(dir), { port, cutAfter: Number(opt("cut-after") || 0) }).then(async ({ server, base, missing }) => {
+    serveFolder(path.resolve(dir), { port, cutAfter: Number(opt("cut-after") || 0), speedKb: Number(opt("speed") || 0) }).then(async ({ server, base, missing }) => {
         await server.listen(port);
         console.log(`Serveur de test : ${base}/manifest.json`);
         if (missing) console.warn(`Attention : ${missing} fichier(s) du manifest absents des dossiers release-*`);

@@ -525,6 +525,9 @@
 
         .launcher-status {
             margin-bottom: 10px;
+
+            /* la barre de progression, les avertissements et les erreurs passent sous le texte */
+            flex-wrap: wrap;
         }
 
         .server-status {
@@ -1282,7 +1285,7 @@
 </div>
 
 <!-- Progression de la mise à jour du modpack -->
-<div id="updateBarWrap" hidden style="margin: 8px 0 0 21px; max-width: 360px;">
+<div id="updateBarWrap" hidden style="margin: 4px 0 0 21px; flex: 0 0 calc(100% - 21px);">
     <div style="height: 6px; border-radius: 3px; background: rgba(255,255,255,0.14); overflow: hidden;">
         <div id="updateBar" style="height: 100%; width: 0%; background: #63e7ff; transition: width 0.15s;"></div>
     </div>
@@ -1290,10 +1293,10 @@
 </div>
 
 <!-- Avertissement (hors-ligne) -->
-<div id="updateWarning" hidden style="margin: 8px 0 0 21px; max-width: 360px; font-size: 13px; color: #ffd37a;"></div>
+<div id="updateWarning" hidden style="margin: 4px 0 0 21px; flex: 0 0 calc(100% - 21px); font-size: 13px; color: #ffd37a;"></div>
 
 <!-- Erreur lisible + actions -->
-<div id="updateErrorBox" hidden role="alert" style="margin: 10px 0 0 21px; max-width: 380px; padding: 10px 12px; border: 1px solid rgba(255,120,120,0.55); border-radius: 10px; background: rgba(90,10,10,0.40); font-size: 13px; line-height: 1.4;">
+<div id="updateErrorBox" hidden role="alert" style="margin: 6px 0 0 21px; flex: 0 0 calc(100% - 21px); padding: 10px 12px; border: 1px solid rgba(255,120,120,0.55); border-radius: 10px; background: rgba(90,10,10,0.40); font-size: 13px; line-height: 1.4;">
     <div id="updateErrorText"></div>
     <div style="margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap;">
         <button class="top-button" id="retryButton" style="height: 34px; padding: 0 14px; font-size: 13px; background: rgba(99,231,255,0.20);">Réessayer</button>
@@ -1302,7 +1305,7 @@
 </div>
 
 <!-- Mise à jour du launcher lui-même -->
-<div id="selfUpdateBox" hidden style="margin: 10px 0 0 21px; max-width: 380px; font-size: 13px; color: #9dffb0;">
+<div id="selfUpdateBox" hidden style="margin: 6px 0 0 21px; flex: 0 0 calc(100% - 21px); font-size: 13px; color: #9dffb0;">
     <span id="selfUpdateText"></span>
     <button class="top-button" id="selfUpdateButton" hidden style="height: 30px; padding: 0 12px; font-size: 12px; margin-left: 8px; background: rgba(120,255,160,0.20);">Redémarrer</button>
 </div>
