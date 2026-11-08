@@ -41,7 +41,8 @@ const check = (name, ok, detail = "") => { results.push(ok); log(`  ${ok ? "OK  
   fs.mkdirSync(appdata, { recursive: true });
   const electron = require(path.join(project, "node_modules", "electron"));
   const env = { ...process.env, APPDATA: appdata, COBBLEREALM_DEV: "1", COBBLEREALM_ROOT: game,
-    COBBLEREALM_MANIFEST_URL: `http://127.0.0.1:${SERVER_PORT}/manifest.json`, ELECTRON_ENABLE_LOGGING: "1" };
+    COBBLEREALM_MANIFEST_URL: `http://127.0.0.1:${SERVER_PORT}/manifest.json`, ELECTRON_ENABLE_LOGGING: "1",
+    COBBLEREALM_CHANGELOG_URL: "http://127.0.0.1:1/CHANGELOG.md", COBBLEREALM_NEWS_URL: "http://127.0.0.1:1/news.json" };
   delete env.ELECTRON_RUN_AS_NODE;
   /* --user-data-dir isole les réglages et la session Microsoft ; COBBLEREALM_ROOT isole le dossier de jeu.
      (APPDATA seul ne suffit PAS sous Windows : Electron lit le vrai dossier Roaming via l'API système.) */
@@ -77,6 +78,17 @@ const check = (name, ok, detail = "") => { results.push(ok); log(`  ${ok ? "OK  
   await shot("1-demarrage.png");
 
   /* 6. réparation = synchronisation complète, avec progression visible */
+  /* informations sans configuration ni réseau : jamais de faux contenu */
+  check("serveur : aucune adresse configurée -> la ligne « Serveur » est masquée (plus de « EN LIGNE » écrit en dur)", await ev("document.getElementById('serverRow').hidden && !document.querySelector('.play-panel').textContent.includes('EN LIGNE')"));
+  const newsText = await ev("document.getElementById('updateCard').textContent");
+  check("annonce injoignable : texte neutre, sans faux numéro de version", /dernières nouveautés/.test(newsText) && !/V4|V5|V10/.test(newsText), newsText.slice(0, 80));
+  check("pastille du pack : pas de numéro tant que rien n'est installé", (await ev("document.getElementById('chipPack').textContent.trim()")) === "★ CobbleRealm");
+  await ev("document.getElementById('changelogButton').click()");
+  await sleep(600);
+  const cl = await ev("({ first: document.querySelector('#changelogList h2') && document.querySelector('#changelogList h2').textContent, note: document.getElementById('changelogNote').textContent, noteHidden: document.getElementById('changelogNote').hidden, text: document.getElementById('changelogList').textContent })");
+  check("changelog hors ligne : version intégrée au launcher, avec une mention claire", cl.first === `Version ${require("../package.json").version}` && !cl.noteHidden && /intégrées au launcher/.test(cl.note) && /mise à jour/i.test(cl.text), JSON.stringify([cl.first, cl.note]));
+  await ev("document.getElementById('homeButton').click()");
+
   /* 6a. annulation pendant le téléchargement */
   const cancelledRun = ev("window.cobbleRealm.repairInstallation()");
   const bar1 = await waitFor("!document.getElementById('updateBarWrap').hidden", 20000);
@@ -112,6 +124,8 @@ const check = (name, ok, detail = "") => { results.push(ok); log(`  ${ok ? "OK  
   check("staging nettoyé", !fs.existsSync(path.join(game, ".staging")));
   const after = await waitFor(`(${text("launcherUpdateStatus")}).startsWith('CobbleRealm à jour') && ${text("launcherUpdateStatus")}`, 10000);
   check("statut après installation", after === "CobbleRealm à jour — v1.0.0", after);
+  const chipAfter = await waitFor("document.getElementById('chipPack').textContent.trim() === '★ CobbleRealm v1.0.0'", 8000);
+  check("pastille du pack : numéro réellement installé après la mise à jour (v1.0.0)", Boolean(chipAfter));
   check("barre masquée", await ev("document.getElementById('updateBarWrap').hidden"));
   await shot("3-a-jour.png");
 

@@ -223,6 +223,26 @@ contextBridge.exposeInMainWorld(
             ipcRenderer.on("update-warning", (event, data) => callback(data));
         },
 
+        /* Informations affichées (jamais de valeur inventée) */
+        getChangelog: () =>
+            ipcRenderer.invoke(
+                "get-changelog"
+            ),
+
+        onChangelogUpdated: (callback) => {
+            ipcRenderer.on("changelog-updated", (event, data) => callback(data));
+        },
+
+        getServerStatus: () =>
+            ipcRenderer.invoke(
+                "get-server-status"
+            ),
+
+        getAppInfo: () =>
+            ipcRenderer.invoke(
+                "get-app-info"
+            ),
+
         /* Annule le téléchargement en cours (les fichiers déjà reçus sont conservés) */
         cancelUpdate: () =>
             ipcRenderer.invoke(

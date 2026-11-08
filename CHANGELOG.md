@@ -14,6 +14,7 @@ Ce fichier présente, version après version, ce qui change pour les joueurs.
 - Suivi du téléchargement plus complet : barre de progression, fichier en cours, nombre de fichiers et vitesse.
 - Si tu n'as pas de connexion Internet, tu peux lancer la version déjà installée (avec un avertissement).
 - Le launcher se met désormais à jour tout seul.
+- La page Changelog affiche maintenant les vraies nouveautés du launcher, mises à jour en ligne sans avoir à réinstaller. Sans connexion, la dernière version connue ou celle intégrée au launcher s'affiche.
 - Le temps restant estimé s'affiche pendant les téléchargements.
 - Tu peux annuler un téléchargement : ce qui est déjà reçu est conservé, et il reprend ensuite sans tout recommencer.
 - Nouveau menu du compte Microsoft : tu peux changer de compte ou te déconnecter depuis le launcher.
@@ -30,6 +31,8 @@ Ce fichier présente, version après version, ce qui change pour les joueurs.
 - Quand une erreur survient, un message clair en français explique ce qui s'est passé, avec des boutons adaptés : Réessayer, Réparer l'installation, Copier le rapport ou Obtenir de l'aide.
 - Le bouton « Copier le rapport » prépare un résumé à envoyer à l'équipe en cas de problème, sans aucune information personnelle (compte, pseudo, mots de passe ou nom de ton ordinateur).
 - Tu es maintenant prévenu si Minecraft s'arrête à cause d'une erreur.
+- Les versions affichées (launcher, Minecraft, Fabric et modpack) sont celles réellement installées sur ton ordinateur.
+- Pendant le chargement, l'annonce affiche un cadre d'attente ; sans Internet, la dernière annonce connue s'affiche.
 - La zone de téléchargement est plus claire : pourcentage, temps restant, fichier en cours, nombre de fichiers, volume et vitesse.
 - La zone du bouton JOUER garde une taille stable quand un téléchargement, un avertissement ou un message s'affiche : le bouton ne bouge plus.
 - Le message « nouvelle version du launcher prête » s'affiche dans la barre de gauche, avec un bouton pour redémarrer.
@@ -39,6 +42,8 @@ Ce fichier présente, version après version, ce qui change pour les joueurs.
 
 ### Corrections
 - Sur les petites fenêtres, le titre CobbleRealm n'est plus coupé et l'annonce ne recouvre plus le bouton JOUER.
+- L'indicateur « Serveur EN LIGNE » s'affichait toujours, même quand le serveur était éteint : il n'apparaît plus tant que l'état réel du serveur n'est pas connu.
+- Une ancienne annonce (« V4 ») pouvait s'afficher brièvement au démarrage : c'est corrigé.
 - Il n'était pas possible d'annuler une connexion Microsoft en cours : c'est désormais possible à tout moment.
 - Un message de développement incompréhensible (« APPID EN ATTENTE ») qui pouvait s'afficher sur le bouton JOUER a été supprimé : il est remplacé par une explication claire.
 - Le bouton JOUER redevient utilisable immédiatement après une erreur, sans attendre quelques secondes.

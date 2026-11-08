@@ -6,6 +6,8 @@
  *   node test/e2e-ui.js [dossierCaptures]
  */
 const { spawn } = require("child_process");
+const { startFakeMinecraft } = require("./fake-minecraft");
+const { createTestServer } = require("../tools/test-server");
 const fs = require("fs"), path = require("path"), os = require("os");
 
 const project = path.resolve(__dirname, "..");
@@ -54,8 +56,15 @@ const MEASURE = `(() => {
 })()`;
 
 (async () => {
+  const mc = await startFakeMinecraft({ version: { name: "1.21.1", protocol: 767 }, players: { max: 100, online: 24 } });
+  const web = createTestServer();
+  const webBase = await web.listen();
+  web.state.blobs.set("/CHANGELOG.md", Buffer.from("## Version 9.9.9 — 1 janvier 2030\n\n### Nouveautés\n- Nouveauté **en ligne** de test.\n\n### Corrections\n- Un bug en ligne corrigé.\n\n## Version 2.0.0\n\n### Nouveautés\n- Ancienne version.\n"));
+  web.state.blobs.set("/news.json", Buffer.from(JSON.stringify({ badge: "📣 ANNONCE DE TEST", title: "Annonce", titleHighlight: "serveur local", version: "V77", paragraphs: ["Texte de l'annonce de test."] })));
+
   const electron = require(path.join(project, "node_modules", "electron"));
-  const env = { ...process.env, COBBLEREALM_DEV: "1", COBBLEREALM_ROOT: path.join(tmp, "jeu"), COBBLEREALM_MANIFEST_URL: "http://127.0.0.1:1/manifest.json", ELECTRON_ENABLE_LOGGING: "1" };
+  const env = { ...process.env, COBBLEREALM_DEV: "1", COBBLEREALM_ROOT: path.join(tmp, "jeu"), COBBLEREALM_MANIFEST_URL: "http://127.0.0.1:1/manifest.json", ELECTRON_ENABLE_LOGGING: "1",
+    COBBLEREALM_SERVER: `127.0.0.1:${mc.port}`, COBBLEREALM_CHANGELOG_URL: `${webBase}/CHANGELOG.md`, COBBLEREALM_NEWS_URL: `${webBase}/news.json` };
   delete env.ELECTRON_RUN_AS_NODE;
   const app = spawn(electron, [".", `--remote-debugging-port=${DEBUG_PORT}`, "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows", "--disable-features=CalculateNativeWinOcclusion", `--user-data-dir=${path.join(tmp, "ud")}`], { cwd: project, env });
   let out = ""; app.stdout.on("data", (d) => out += d); app.stderr.on("data", (d) => out += d);
@@ -258,6 +267,65 @@ const MEASURE = `(() => {
     if (w === 1200) await shot("g4-banniere-launcher-1200x700.png");
   }
   await ev("document.getElementById('selfUpdateBox').hidden = true");
+
+  /* ---- Groupe 5 : informations fiables ---- */
+  await size(1200, 700);
+  const waitFor = async (expr, ms = 8000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { const v = await ev(expr); if (v) return v; } catch {} await sleep(200); } return null; };
+
+  const online = await waitFor("(() => { const v = document.getElementById('serverValue').textContent.trim(); return !document.getElementById('serverRow').hidden && v; })()");
+  check("serveur : statut réel avec joueurs connectés et places maximales (« 24/100 joueurs »)", online === "EN LIGNE · 24/100 joueurs", String(online));
+
+  mc.response = { version: { name: "1.21.1" } };                        // le serveur masque les joueurs
+  await ev("refreshServerStatus()"); await sleep(400);
+  check("serveur : joueurs masqués par le serveur -> « EN LIGNE » sans compteur inventé", (await ev("document.getElementById('serverValue').textContent.trim()")) === "EN LIGNE");
+
+  mc.response = { players: { max: 100, online: 0 } };
+  await ev("refreshServerStatus()"); await sleep(400);
+  check("serveur : 0 joueur affiché « 0/100 »", (await ev("document.getElementById('serverValue').textContent.trim()")) === "EN LIGNE · 0/100 joueurs");
+
+  /* le serveur s'éteint : hors ligne (ou « indisponible » si cette machine n'a pas Internet) */
+  await mc.close();
+  await ev("refreshServerStatus()"); await sleep(2500);
+  const down = await ev("({ text: document.getElementById('serverValue').textContent.trim(), cls: document.getElementById('serverValue').className, dot: document.getElementById('serverDot').className })");
+  check("serveur éteint : « HORS LIGNE » (jamais « EN LIGNE »)", down.text !== "" && !/^EN LIGNE/.test(down.text) && /^(HORS LIGNE|STATUT INDISPONIBLE)$/.test(down.text), JSON.stringify(down));
+  await shot("g5-serveur-hors-ligne-1200x700.png");
+
+  for (const [w, h] of SIZES) {
+    await size(w, h);
+    await ev("showServerStatus({ configured: true, state: 'online', players: { online: 124, max: 1000 } })");
+    const m = await ev(`(() => { const p = document.querySelector('.play-panel').getBoundingClientRect(), r = document.getElementById('serverRow').getBoundingClientRect(), v = document.getElementById('serverValue'); const issues = [];
+      if (r.right > p.right || r.bottom > p.bottom || r.top < p.top) issues.push('ligne serveur hors du panneau');
+      if (v.getBoundingClientRect().right > p.right - 8) issues.push('texte du serveur déborde');
+      return issues; })()`);
+    check(`ligne « Serveur » dans le panneau — ${w}×${h}`, m.length === 0, m.join(" ; "));
+  }
+  await ev("showServerStatus({ configured: false })");
+  check("serveur non configuré : la ligne est masquée (aucune information inventée)", await ev("document.getElementById('serverRow').hidden"));
+  await size(1200, 700);
+
+  /* versions réelles */
+  const info = await ev("({ sub: document.getElementById('brandSubtitle').textContent.trim(), mc: document.getElementById('chipMinecraft').textContent.trim(), fab: document.getElementById('chipFabric').textContent.trim(), pack: document.getElementById('chipPack').textContent.trim() })");
+  const pkgVersion = require("../package.json").version;
+  check("versions : launcher dans le sous-titre, Minecraft et Fabric réels, pack sans faux numéro", info.sub === `Launcher officiel · v${pkgVersion}` && /^◇ Minecraft \d/.test(info.mc) && /^⚙ Fabric \d/.test(info.fab) && info.pack === "★ CobbleRealm", JSON.stringify(info));
+
+  /* annonce : la version de l'annonce (V77) ne devient pas le numéro du pack */
+  await ev("loadLauncherNews()");        // les scénarios précédents ont remplacé l'annonce par des annonces de test
+  const newsOk = await waitFor("document.querySelector('#updateCard .update-badge') && document.querySelector('#updateCard .update-badge').textContent.includes('ANNONCE DE TEST')");
+  check("annonce : texte reçu affiché, squelette de chargement remplacé", Boolean(newsOk) && !(await ev("!!document.querySelector('.news-skeleton')")) && (await ev("document.getElementById('updateCard').getAttribute('aria-busy')")) === null);
+  check("annonce : le numéro de version de l'annonce n'est pas présenté comme version du pack", !(await ev("document.getElementById('chipPack').textContent.includes('V77')")));
+
+  /* page Changelog : vraies nouveautés (source en ligne), sans texte de remplissage */
+  await ev("document.getElementById('changelogButton').click()");
+  const cl = await waitFor("document.querySelector('#changelogList h2') && document.querySelector('#changelogList h2').textContent.includes('9.9.9')");
+  const page = await ev(`(() => ({ cards: [...document.querySelectorAll('#changelogList .changelog-card')].map(c => c.querySelector('h2').textContent), first: document.querySelector('#changelogList .changelog-card').textContent, items: [...document.querySelectorAll('#changelogList li')].map(l => l.textContent), note: document.getElementById('changelogNote').hidden, text: document.getElementById('changelogView').textContent }))()`);
+  check("changelog : versions en ligne affichées dans l'ordre, « Dernière version » sur la première, mise en forme retirée", Boolean(cl) && page.cards[0] === "Version 9.9.9" && page.cards[1] === "Version 2.0.0" && /Dernière version/.test(page.first) && page.items[0] === "Nouveauté en ligne de test." && page.note, JSON.stringify(page.cards));
+  check("changelog : plus de texte de remplissage ni d'ancienne version fictive", !/V4\b|Retrouvez ici|nouveautés et correctifs/.test(page.text), "");
+  const bigPage = await ev("(() => { const el = document.querySelector('.changelog-page'); return el.scrollHeight >= el.clientHeight && getComputedStyle(el).overflowY === 'auto'; })()");
+  check("changelog : la page défile si elle est longue", bigPage);
+  await shot("g5-changelog-1200x700.png");
+  await size(900, 600); await shot("g5-changelog-900x600.png"); await size(1200, 700);
+  await ev("document.getElementById('homeButton').click()");
+  await web.close().catch(() => {});
 
   /* Aucune erreur dans la page */
   const problems = events.filter((e) => e.method === "Runtime.exceptionThrown" || (e.method === "Log.entryAdded" && e.params.entry.level === "error" && !/Failed to load resource|ERR_CONNECTION/.test(e.params.entry.text)));

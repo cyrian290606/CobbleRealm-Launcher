@@ -33,6 +33,8 @@ const { ensureFabricProfile } = require("./fabric");
 const { initLauncherUpdates } = require("./launcherUpdates");
 const { describeError } = require("./playerErrors");
 const { sanitize, buildReport, currentUserNames } = require("./support");
+const changelogModule = require("./changelog");
+const { getServerStatus } = require("./serverStatus");
 
 
 /* ==============================
@@ -258,9 +260,23 @@ const COBBLEREALM_MANIFEST_URL =
     "https://cyrian290606.github.io/CobbleRealm-Launcher/manifest.json";
 
 const COBBLEREALM_NEWS_URL =
+    (DEV_MODE && process.env.COBBLEREALM_NEWS_URL) ||
     "https://raw.githubusercontent.com/cyrian290606/CobbleRealm-Launcher/main/news.json";
 
 let launcherNewsCache = null;
+
+/*
+ * Adresse du serveur Minecraft (« nom-de-domaine » ou « nom-de-domaine:port »).
+ * TANT QU'ELLE N'EST PAS RENSEIGNÉE, la ligne « Serveur » est masquée : aucune information inventée.
+ */
+const SERVER_ADDRESS =
+    (DEV_MODE && process.env.COBBLEREALM_SERVER) ||
+    null;
+
+/* Changelog public : mis à jour en ligne sans republier le launcher ; sinon dernière version connue ou version intégrée. */
+const CHANGELOG_URL =
+    (DEV_MODE && process.env.COBBLEREALM_CHANGELOG_URL) ||
+    "https://raw.githubusercontent.com/cyrian290606/CobbleRealm-Launcher/main/CHANGELOG.md";
 
 /* Valeurs de secours si le manifest et l'installation sont inconnus. */
 const FALLBACK_VERSIONS = {
@@ -571,28 +587,39 @@ let launcherSelfUpdater = null;
 
 function getDefaultLauncherNews() {
     return {
-        badge: "📣 MISE À JOUR V4",
+        badge: "📣 ACTUALITÉS",
         title: "Bienvenue sur",
         titleHighlight: "CobbleRealm",
-        version: "V4",
+        version: "",
         paragraphs: [
             [
-                { text: "Découvrez la ", className: "" },
-                { text: "V4", className: "cyan" },
-                { text: " avec une ", className: "" },
-                { text: "refonte complète des raids", className: "cyan" },
-                { text: ", ", className: "" },
-                { text: "Cobblemon Expeditions", className: "purple" },
-                { text: ", de nouvelles ", className: "" },
-                { text: "montures Pokémon", className: "orange" },
-                { text: ", plus d'informations dans ", className: "" },
-                { text: "EMI", className: "green" },
-                { text: " et plusieurs ", className: "" },
-                { text: "améliorations visuelles", className: "purple" },
-                { text: ".", className: "" }
+                { text: "Retrouve ici les ", className: "" },
+                { text: "dernières nouveautés", className: "cyan" },
+                { text: " de CobbleRealm dès que tu es connecté à Internet.", className: "" }
             ]
         ]
     };
+}
+
+
+function newsCachePath() {
+    return path.join(app.getPath("userData"), "news-cache.json");
+}
+
+
+/* Dernière annonce connue : affichée si le réseau est coupé, à la place d'un texte inventé. */
+function readCachedNews() {
+
+    try {
+
+        const data = JSON.parse(fs.readFileSync(newsCachePath(), "utf8"));
+
+        return normalizeLauncherNews(data);
+
+    } catch {
+
+        return null;
+    }
 }
 
 
@@ -712,15 +739,19 @@ async function fetchLauncherNews() {
             throw new Error("JSON de news invalide.");
         }
 
+        try {
+            fs.writeFileSync(newsCachePath(), JSON.stringify(normalized), "utf8");
+        } catch { /* le cache est facultatif */ }
+
         return normalized;
 
     } catch (error) {
         console.warn(
-            "[CobbleRealm] Impossible de charger les news distantes, utilisation du fallback local.",
-            error
+            "[CobbleRealm] Impossible de charger les news distantes :",
+            error && error.message
         );
 
-        return getDefaultLauncherNews();
+        return readCachedNews() || getDefaultLauncherNews();
     }
 }
 
@@ -1222,7 +1253,9 @@ handle(
 
     async () => {
         if (!launcherNewsCache) {
-            launcherNewsCache = await fetchLauncherNews();
+            refreshChangelogOnline().catch(() => {});
+
+        launcherNewsCache = await fetchLauncherNews();
         }
 
         return launcherNewsCache;
@@ -1291,6 +1324,96 @@ handle(
 
             launchInProgress = false;
         }
+    }
+);
+
+
+/* ==============================
+   INFORMATIONS AFFICHÉES : CHANGELOG, SERVEUR, VERSIONS
+============================== */
+
+const changelogPaths = () => ({
+    embeddedPath: path.join(__dirname, "CHANGELOG.md"),
+    cachePath: path.join(app.getPath("userData"), "changelog-cache.json")
+});
+
+let changelogData = null;
+
+function getChangelogData() {
+
+    if (!changelogData) {
+        changelogData = changelogModule.loadLocal(changelogPaths());
+    }
+
+    return changelogData;
+}
+
+/* Essaie la source en ligne sans bloquer : si elle répond, la page est mise à jour. */
+async function refreshChangelogOnline() {
+
+    const online = await changelogModule.loadOnline({
+        url: CHANGELOG_URL,
+        cachePath: changelogPaths().cachePath,
+        allowLocal: DEV_MODE
+    });
+
+    if (online) {
+
+        changelogData = online;
+        broadcast("changelog-updated", online);
+    }
+}
+
+handle(
+    "get-changelog",
+
+    async () => getChangelogData()
+);
+
+
+/* Statut du serveur : vrai test de connexion, au plus une fois toutes les 20 secondes. */
+let serverStatusCache = null;
+
+handle(
+    "get-server-status",
+
+    async () => {
+
+        if (!SERVER_ADDRESS) {
+            return { configured: false };
+        }
+
+        if (serverStatusCache && Date.now() - serverStatusCache.at < (DEV_MODE ? 0 : 20000)) {
+            return serverStatusCache.value;
+        }
+
+        const value = {
+            configured: true,
+            ...(await getServerStatus(SERVER_ADDRESS))
+        };
+
+        serverStatusCache = { at: Date.now(), value };
+
+        return value;
+    }
+);
+
+
+/* Versions réellement installées : launcher, pack, Minecraft, Fabric. */
+handle(
+    "get-app-info",
+
+    async () => {
+
+        const installed = getUpdater().status();
+        const versions = resolveVersions(null);
+
+        return {
+            launcher: app.getVersion(),
+            pack: installed.valid ? installed.version : null,
+            minecraft: versions.minecraft,
+            fabric: versions.fabricLoader
+        };
     }
 );
 

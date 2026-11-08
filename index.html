@@ -1309,6 +1309,93 @@
         }
 
 /* =========================
+   INFORMATIONS : SERVEUR, CHANGELOG, CHARGEMENT
+========================= */
+
+.server-status[hidden] {
+    display: none;
+}
+
+.server-status .status-dot.error {
+    background: #ff5252;
+}
+
+#serverValue.offline {
+    color: #ff8f98;
+}
+
+#serverValue.unknown {
+    color: #9aabc1;
+}
+
+.version[hidden] {
+    display: none;
+}
+
+.news-skeleton .sk {
+    margin-bottom: 11px;
+
+    border-radius: 8px;
+
+    background: rgba(255, 255, 255, 0.10);
+}
+
+.news-skeleton .sk-badge { width: 150px; height: 28px; border-radius: 999px; }
+.news-skeleton .sk-title { width: 70%; height: 26px; margin-top: 15px; }
+.news-skeleton .sk-line { width: 100%; height: 13px; }
+.news-skeleton .sk-line.short { width: 55%; }
+
+.changelog-card {
+    margin-bottom: 20px;
+}
+
+.changelog-card h2 {
+    display: inline-block;
+    margin-right: 12px;
+}
+
+.changelog-card .changelog-date {
+    margin-left: 4px;
+
+    color: #9aabc1;
+
+    font-size: 13px;
+}
+
+.changelog-card h3 {
+    margin: 18px 0 8px;
+}
+
+.changelog-card h3.s-new { color: #63e7ff; }
+.changelog-card h3.s-better { color: #c58bff; }
+.changelog-card h3.s-fix { color: #41e5aa; }
+
+.changelog-card ul {
+    margin: 0;
+    padding-left: 20px;
+
+    color: #c5d1e1;
+
+    font-size: 15px;
+    line-height: 1.65;
+}
+
+.changelog-card li + li {
+    margin-top: 4px;
+}
+
+.changelog-loading p,
+.changelog-note {
+    color: #aebed3;
+    font-size: 14px;
+}
+
+.changelog-note {
+    max-width: 600px;
+    margin: 4px 0 30px;
+}
+
+/* =========================
    ZONE DU HAUT DU PANNEAU + PROGRESSION
 ========================= */
 
@@ -1737,7 +1824,7 @@
                 COBBLEREALM
             </h2>
 
-            <div class="brand-subtitle">
+            <div class="brand-subtitle" id="brandSubtitle">
                 Launcher officiel
             </div>
 
@@ -1900,7 +1987,18 @@
 </div>
 
 
-        <section class="update-card" id="updateCard" aria-live="polite"></section>
+        <section class="update-card" id="updateCard" aria-live="polite" aria-busy="true">
+
+            <!-- état de chargement : remplacé dès que l'annonce est reçue -->
+            <div class="news-skeleton" aria-hidden="true">
+                <div class="sk sk-badge"></div>
+                <div class="sk sk-title"></div>
+                <div class="sk sk-line"></div>
+                <div class="sk sk-line"></div>
+                <div class="sk sk-line short"></div>
+            </div>
+
+        </section>
 
 
         <section class="play-panel" id="playPanel">
@@ -1960,17 +2058,16 @@
             </div>
 
 
-            <div class="server-status">
+            <!-- Statut réel du serveur : masqué tant que l'adresse n'est pas configurée (aucune valeur inventée) -->
+            <div class="server-status" id="serverRow" hidden>
 
-                <span class="status-dot"></span>
+                <span class="status-dot offline" id="serverDot"></span>
 
                 <span>
 
                     Serveur
 
-                    <strong class="online">
-                        EN LIGNE
-                    </strong>
+                    <strong class="online" id="serverValue"></strong>
 
                 </span>
 
@@ -1994,19 +2091,13 @@
             <div class="versions">
 
 
-                <span class="version">
-                    ◇ Minecraft 1.21.1
-                </span>
+                <span class="version" id="chipMinecraft" hidden></span>
 
 
-                <span class="version">
-                    ⚙ Fabric
-                </span>
+                <span class="version" id="chipFabric" hidden></span>
 
 
-                <span class="version realm" id="newsVersionBadge">
-                    ★ CobbleRealm V4
-                </span>
+                <span class="version realm" id="chipPack" hidden></span>
 
 
             </div>
@@ -2035,21 +2126,15 @@
             Toutes les nouveautés de CobbleRealm.
         </p>
 
-        <div class="changelog-card">
+        <div id="changelogList" aria-live="polite">
 
-            <h2>CobbleRealm V4</h2>
-
-            <span>Dernière mise à jour</span>
-
-            <h3>Nouveautés</h3>
-
-            <p>
-                Retrouvez ici les changements,
-                nouveautés et correctifs de
-                CobbleRealm V4.
-            </p>
+            <div class="changelog-card changelog-loading">
+                <p>Chargement des nouveautés...</p>
+            </div>
 
         </div>
+
+        <p class="changelog-note" id="changelogNote" hidden></p>
 
     </div>
 
@@ -2940,6 +3025,8 @@ if (data.status === "install-progress") {
 
             if (data.status === "ready") {
 
+    refreshAppInfo();
+
     launcherReady = true;
 
     if (launcherProgress) {
@@ -3683,25 +3770,15 @@ if (
 
 
 const FALLBACK_NEWS = {
-        badge: "📣 MISE À JOUR V4",
+        badge: "📣 ACTUALITÉS",
         title: "Bienvenue sur",
         titleHighlight: "CobbleRealm",
-        version: "V5",
+        version: "",
         paragraphs: [
             [
-                { text: "Découvrez la ", className: "" },
-                { text: "V5", className: "cyan" },
-                { text: " avec une ", className: "" },
-                { text: "refonte complète des raids", className: "cyan" },
-                { text: ", ", className: "" },
-                { text: "Cobblemon Expeditions", className: "purple" },
-                { text: ", de nouvelles ", className: "" },
-                { text: "montures Pokémon", className: "orange" },
-                { text: ", plus d'informations dans ", className: "" },
-                { text: "EMI", className: "green" },
-                { text: " et plusieurs ", className: "" },
-                { text: "améliorations visuelles", className: "purple" },
-                { text: ".", className: "" }
+                { text: "Retrouve ici les ", className: "" },
+                { text: "dernières nouveautés", className: "cyan" },
+                { text: " de CobbleRealm dès que tu es connecté à Internet.", className: "" }
             ]
         ]
     };
@@ -3736,8 +3813,6 @@ const FALLBACK_NEWS = {
 
     function renderNews(news) {
         const card = document.getElementById("updateCard");
-        const versionBadge = document.getElementById("newsVersionBadge");
-
         if (!card) {
             return;
         }
@@ -3762,10 +3837,6 @@ const FALLBACK_NEWS = {
             ? safeNews.version
             : FALLBACK_NEWS.version;
 
-        if (versionBadge) {
-            versionBadge.textContent = `★ CobbleRealm ${versionText}`;
-        }
-
         const paragraphs = Array.isArray(safeNews.paragraphs) && safeNews.paragraphs.length > 0
             ? safeNews.paragraphs
             : FALLBACK_NEWS.paragraphs;
@@ -3773,6 +3844,7 @@ const FALLBACK_NEWS = {
         currentNewsView = { badgeText, titleText, titleHighlight, paragraphs };
 
         card.textContent = "";
+        card.removeAttribute("aria-busy");
         fillNewsNodes(card, currentNewsView);
 
         /* Boutons utilisés quand la place manque (voir fitNews) */
@@ -3992,7 +4064,218 @@ const FALLBACK_NEWS = {
     }
 
 
+    /* =========================
+       INFORMATIONS FIABLES : VERSIONS, SERVEUR, CHANGELOG
+    ========================== */
+
+    const brandSubtitle = document.getElementById("brandSubtitle");
+    const chipMinecraft = document.getElementById("chipMinecraft");
+    const chipFabric = document.getElementById("chipFabric");
+    const chipPack = document.getElementById("chipPack");
+
+    /* Versions réellement installées (launcher, pack, Minecraft, Fabric) */
+    async function refreshAppInfo() {
+
+        try {
+
+            const info = await window.cobbleRealm.getAppInfo();
+
+            if (!info) {
+                return;
+            }
+
+            brandSubtitle.textContent = "Launcher officiel · v" + info.launcher;
+
+            chipMinecraft.textContent = "◇ Minecraft " + info.minecraft;
+            chipMinecraft.hidden = false;
+
+            chipFabric.textContent = "⚙ Fabric " + info.fabric;
+            chipFabric.hidden = false;
+
+            chipPack.textContent = info.pack ? "★ CobbleRealm v" + info.pack : "★ CobbleRealm";
+            chipPack.hidden = false;
+
+        } catch (error) {
+
+            console.error("Erreur infos de version :", error);
+        }
+    }
+
+    /* Statut réel du serveur : jamais d'état inventé. */
+    const serverRow = document.getElementById("serverRow");
+    const serverDot = document.getElementById("serverDot");
+    const serverValue = document.getElementById("serverValue");
+    let serverTimer = null;
+
+    function showServerStatus(status) {
+
+        if (!status || !status.configured) {
+
+            serverRow.hidden = true;
+
+            return;
+        }
+
+        serverRow.hidden = false;
+        serverDot.classList.remove("offline", "error", "loading");
+        serverValue.className = "";
+
+        if (status.state === "online") {
+
+            const players = status.players;
+
+            serverValue.className = "online";
+            serverValue.textContent = players
+                ? "EN LIGNE · " + players.online + "/" + players.max + " joueurs"
+                : "EN LIGNE";
+
+        } else if (status.state === "offline") {
+
+            serverDot.classList.add("error");
+            serverValue.className = "offline";
+            serverValue.textContent = "HORS LIGNE";
+
+        } else {
+
+            serverDot.classList.add("offline");
+            serverValue.className = "unknown";
+            serverValue.textContent = "STATUT INDISPONIBLE";
+        }
+    }
+
+    async function refreshServerStatus() {
+
+        try {
+
+            showServerStatus(await window.cobbleRealm.getServerStatus());
+
+        } catch (error) {
+
+            console.error("Erreur statut serveur :", error);
+        }
+    }
+
+    function startServerStatus() {
+
+        refreshServerStatus();
+
+        clearInterval(serverTimer);
+
+        /* Toutes les 60 s, seulement quand la fenêtre est visible. */
+        serverTimer = setInterval(() => {
+
+            if (!document.hidden) {
+                refreshServerStatus();
+            }
+
+        }, 60000);
+    }
+
+    window.addEventListener("focus", refreshServerStatus);
+
+    /* Page Changelog : nouveautés du launcher (jamais de texte de remplissage). */
+    const changelogList = document.getElementById("changelogList");
+    const changelogNote = document.getElementById("changelogNote");
+
+    const CHANGELOG_STYLES = { "Nouveautés": "s-new", "Améliorations": "s-better", "Corrections": "s-fix" };
+
+    function renderChangelog(data) {
+
+        changelogList.textContent = "";
+        changelogNote.hidden = true;
+
+        const versions = data && Array.isArray(data.versions) ? data.versions : [];
+
+        if (versions.length === 0) {
+
+            const card = document.createElement("div");
+            card.className = "changelog-card changelog-loading";
+
+            const text = document.createElement("p");
+            text.textContent = "Les nouveautés ne sont pas disponibles pour le moment.";
+
+            card.appendChild(text);
+            changelogList.appendChild(card);
+
+            return;
+        }
+
+        versions.forEach((version, index) => {
+
+            const card = document.createElement("div");
+            card.className = "changelog-card";
+
+            const title = document.createElement("h2");
+            title.textContent = "Version " + version.version;
+            card.appendChild(title);
+
+            if (version.date) {
+
+                const date = document.createElement("span");
+                date.className = "changelog-date";
+                date.textContent = version.date;
+                card.appendChild(date);
+            }
+
+            if (index === 0) {
+
+                const badge = document.createElement("span");
+                badge.textContent = "Dernière version";
+                card.appendChild(badge);
+            }
+
+            for (const section of version.sections) {
+
+                const heading = document.createElement("h3");
+                heading.className = CHANGELOG_STYLES[section.title] || "";
+                heading.textContent = section.title;
+                card.appendChild(heading);
+
+                const list = document.createElement("ul");
+
+                for (const item of section.items) {
+
+                    const li = document.createElement("li");
+                    li.textContent = item;
+                    list.appendChild(li);
+                }
+
+                card.appendChild(list);
+            }
+
+            changelogList.appendChild(card);
+        });
+
+        if (data.source === "embedded" || data.source === "cache") {
+
+            changelogNote.textContent = data.source === "cache"
+                ? "Affichage de la dernière version connue (connexion indisponible)."
+                : "Affichage des nouveautés intégrées au launcher (connexion indisponible).";
+            changelogNote.hidden = false;
+        }
+    }
+
+    async function loadChangelogPage() {
+
+        try {
+
+            renderChangelog(await window.cobbleRealm.getChangelog());
+
+        } catch (error) {
+
+            console.error("Erreur changelog :", error);
+            renderChangelog(null);
+        }
+    }
+
+    if (window.cobbleRealm && window.cobbleRealm.onChangelogUpdated) {
+        window.cobbleRealm.onChangelogUpdated(renderChangelog);
+    }
+
     checkMicrosoftSession();
+    refreshAppInfo();
+    startServerStatus();
+    loadChangelogPage();
     loadRamSetting();
     loadLauncherNews();
 refreshLauncherUpdateStatus();
