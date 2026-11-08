@@ -379,11 +379,11 @@ function broadcast(channel, payload) {
 }
 
 
-function sendLauncherUpdateStatus(status, message) {
+function sendLauncherUpdateStatus(status, message, extra = {}) {
 
     broadcast(
         "launcher-update-status",
-        { status, message }
+        { status, message, ...extra }
     );
 }
 
@@ -1297,9 +1297,10 @@ handle(
             };
 
             sendLauncherUpdateStatus(
-                "ready",
-                describeCheck(lastCheck)
-            );
+                    "ready",
+                    describeCheck(lastCheck),
+                    { updateAvailable: false }
+                );
 
             return {
                 success: true,
@@ -1591,7 +1592,8 @@ handle(
 
                 sendLauncherUpdateStatus(
                     "ready",
-                    describeCheck(lastCheck)
+                    describeCheck(lastCheck),
+                    { updateAvailable: false }
                 );
             }
 
@@ -2145,7 +2147,8 @@ app.whenReady().then(
 
         sendLauncherUpdateStatus(
             "ready",
-            describeCheck(check)
+            describeCheck(check),
+            { updateAvailable: Boolean(check.updateAvailable) }
         );
 
         console.log(

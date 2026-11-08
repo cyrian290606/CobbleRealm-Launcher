@@ -327,6 +327,38 @@ const MEASURE = `(() => {
   await ev("document.getElementById('homeButton').click()");
   await web.close().catch(() => {});
 
+  /* ---- Groupe 6 : bouton JOUER ---- */
+  const PLAY_STATES = [
+    ["prêt", "setPlayState('JOUER','▶',false)", { busy: false, ellipsisOk: false }],
+    ["mise à jour disponible", "setPlayState('METTRE À JOUR ET JOUER','▶',false)", { busy: false, ellipsisOk: false }],
+    ["vérification (spinner)", "setPlayState('VÉRIFICATION...','⏳',true)", { busy: true, ellipsisOk: false }],
+    ["message d'étape long", "setPlayState('TÉLÉCHARGEMENT DE JAVA 21... 100%','⏳',true)", { busy: true, ellipsisOk: false }],
+    ["message démesuré", "setPlayState('PRÉPARATION DE FABRIC 0.18.4 POUR MINECRAFT 1.21.1 ET COBBLEMON...','⏳',true)", { busy: true, ellipsisOk: true }],
+    ["en jeu", "setPlayState('EN JEU','✓',true)", { busy: false, ellipsisOk: false }]
+  ];
+  for (const [w, h] of SIZES) {
+    await size(w, h);
+    const issues = [];
+    for (const [label, script, expect] of PLAY_STATES) {
+      await ev(script);
+      const r = await ev(`(() => { const b = document.getElementById('playButton'), t = document.getElementById('playText'), i = document.getElementById('playIcon');
+        const br = b.getBoundingClientRect(), tr = t.getBoundingClientRect(), ir = i.getBoundingClientRect();
+        return { inside: tr.left >= br.left && tr.right <= br.right - 6 && ir.left >= br.left && ir.right <= br.right,
+          clipped: t.scrollWidth > t.clientWidth + 1, sw: t.scrollWidth, cw: t.clientWidth, bw: Math.round(br.width), fs: getComputedStyle(b).fontSize, cls: b.className, hourglass: b.textContent.includes('⏳'), spinner: i.classList.contains('play-spinner'),
+          anim: getComputedStyle(i).animationName, cursor: getComputedStyle(b).cursor, state: b.dataset.state, busyAttr: b.getAttribute('aria-busy'), disabled: b.disabled }; })()`);
+      if (!r.inside) issues.push(label + " : texte hors du bouton");
+      if (r.clipped && !expect.ellipsisOk) issues.push(label + " : texte coupé (" + r.sw + "/" + r.cw + " bouton " + r.bw + " police " + r.fs + " " + r.cls + ")");
+      if (r.hourglass) issues.push(label + " : sablier emoji");
+      if (r.spinner !== expect.busy) issues.push(label + " : spinner " + (expect.busy ? "absent" : "inattendu"));
+      if (expect.busy && (r.anim !== "cr-spin" || r.cursor !== "progress" || r.state !== "busy" || r.busyAttr !== "true")) issues.push(label + " : état occupé incomplet " + JSON.stringify(r));
+      if (!expect.busy && label === "prêt" && (r.disabled || r.state !== "ready" || r.cursor !== "pointer")) issues.push("prêt : bouton inactif " + JSON.stringify(r));
+      if (label === "en jeu" && (r.state !== "done" || r.cursor !== "default")) issues.push("en jeu : état « terminé » incorrect " + JSON.stringify(r));
+    }
+    check(`bouton JOUER, tous ses états — ${w}×${h}`, issues.length === 0, issues.join(" ; ") || "6 états lisibles et complets");
+    if (w === 1200) { await ev(PLAY_STATES[2][1]); await shot("g6-jouer-spinner-1200x700.png"); await ev(PLAY_STATES[1][1]); await shot("g6-jouer-mise-a-jour-1200x700.png"); }
+  }
+  await ev("setPlayState('JOUER','▶',false)");
+
   /* Aucune erreur dans la page */
   const problems = events.filter((e) => e.method === "Runtime.exceptionThrown" || (e.method === "Log.entryAdded" && e.params.entry.level === "error" && !/Failed to load resource|ERR_CONNECTION/.test(e.params.entry.text)));
   check("aucune erreur CSP / exception dans la page", problems.length === 0, JSON.stringify(problems.slice(0, 2).map((p) => p.params.entry ? p.params.entry.text : p.params.exceptionDetails.text)));

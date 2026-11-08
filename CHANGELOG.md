@@ -31,6 +31,8 @@ Ce fichier présente, version après version, ce qui change pour les joueurs.
 - Quand une erreur survient, un message clair en français explique ce qui s'est passé, avec des boutons adaptés : Réessayer, Réparer l'installation, Copier le rapport ou Obtenir de l'aide.
 - Le bouton « Copier le rapport » prépare un résumé à envoyer à l'équipe en cas de problème, sans aucune information personnelle (compte, pseudo, mots de passe ou nom de ton ordinateur).
 - Tu es maintenant prévenu si Minecraft s'arrête à cause d'une erreur.
+- Le bouton JOUER indique clairement l'état : « METTRE À JOUR ET JOUER » quand une mise à jour est disponible, « EN JEU » quand Minecraft est lancé, avec un indicateur de chargement animé à la place de l'ancien sablier.
+- Les textes du bouton JOUER s'adaptent à sa taille : plus de message coupé, même sur une petite fenêtre.
 - Les versions affichées (launcher, Minecraft, Fabric et modpack) sont celles réellement installées sur ton ordinateur.
 - Pendant le chargement, l'annonce affiche un cadre d'attente ; sans Internet, la dernière annonce connue s'affiche.
 - La zone de téléchargement est plus claire : pourcentage, temps restant, fichier en cours, nombre de fichiers, volume et vitesse.

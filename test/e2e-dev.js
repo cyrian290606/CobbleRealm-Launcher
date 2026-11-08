@@ -71,7 +71,8 @@ const check = (name, ok, detail = "") => { results.push(ok); log(`  ${ok ? "OK  
   const status = await waitFor(`(${text("launcherUpdateStatus")}).startsWith('Mise à jour disponible') && ${text("launcherUpdateStatus")}`);
   check("statut au démarrage = mise à jour disponible avec fichiers et taille", /^Mise à jour disponible — v1\.0\.0 \(5 fichiers, \d+ Mo\)$/.test(status || ""), status);
   await waitFor("!document.getElementById('playButton').disabled", 10000);
-  check("JOUER activé", await ev("!document.getElementById('playButton').disabled && document.getElementById('playText').textContent.trim() === 'JOUER'"));
+  check("JOUER activé", await ev("!document.getElementById('playButton').disabled && document.getElementById('playText').textContent.trim() === 'METTRE À JOUR ET JOUER'"));
+  check("le bouton annonce clairement la mise à jour : « METTRE À JOUR ET JOUER »", (await ev("document.getElementById('playText').textContent.trim()")) === "METTRE À JOUR ET JOUER");
   check("rien n'est installé avant le clic", !fs.existsSync(path.join(game, "lock.json")) && !fs.existsSync(path.join(game, "mods")));
   const options = await ev("[...document.getElementById('ramSelect').options].map(o => o.value).join(',')");
   check("sélecteur de RAM construit selon la machine", /^2,3,4/.test(options), options);
