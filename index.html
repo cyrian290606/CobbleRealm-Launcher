@@ -128,7 +128,7 @@
             font-size: 17px;
 
             cursor: pointer;
-            transition: 0.2s;
+            transition: background-color 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s, transform 0.2s, filter 0.2s, opacity 0.2s;
         }
 
         .menu-item:hover {
@@ -206,7 +206,7 @@
             font-weight: 800;
 
             cursor: pointer;
-            transition: 0.2s;
+            transition: background-color 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s, transform 0.2s, filter 0.2s, opacity 0.2s;
         }
 
         .self-update-button:hover {
@@ -234,7 +234,7 @@
 
             cursor: pointer;
 
-            transition: 0.2s;
+            transition: background-color 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s, transform 0.2s, filter 0.2s, opacity 0.2s;
         }
 
         .account:hover {
@@ -323,7 +323,7 @@
             text-align: left;
 
             cursor: pointer;
-            transition: 0.2s;
+            transition: background-color 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s, transform 0.2s, filter 0.2s, opacity 0.2s;
         }
 
         .account-menu-item:hover:not(:disabled),
@@ -491,7 +491,7 @@
             box-shadow:
                 0 10px 24px rgba(0, 0, 0, 0.17);
 
-            transition: 0.2s;
+            transition: background-color 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s, transform 0.2s, filter 0.2s, opacity 0.2s;
         }
 
         .top-button:hover {
@@ -750,6 +750,37 @@
 
         .play-icon {
             margin-right: 12px;
+        }
+
+        /* ===== focus clavier : toujours visible, jamais au clic de souris ===== */
+
+        :focus-visible {
+            outline: 2px solid #63e7ff;
+            outline-offset: 2px;
+        }
+
+        .menu-item:focus-visible {
+            outline-offset: -2px;
+            border-radius: 12px;
+        }
+
+        .play-button:focus-visible {
+            outline: 3px solid #ffffff;
+            outline-offset: 3px;
+        }
+
+        select:focus-visible,
+        .top-button:focus-visible,
+        .news-more:focus-visible,
+        .news-pill:focus-visible {
+            outline: 2px solid #63e7ff;
+            outline-offset: 3px;
+        }
+
+        .console-box:focus-visible,
+        .changelog-page:focus-visible,
+        .settings-page:focus-visible {
+            outline-offset: -3px;
         }
 
         /* ===== états du bouton JOUER ===== */
@@ -1571,7 +1602,7 @@
     font-weight: 800;
 
     cursor: pointer;
-    transition: 0.2s;
+    transition: background-color 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s, transform 0.2s, filter 0.2s, opacity 0.2s;
 }
 
 .progress-cancel:hover:not(:disabled) {
@@ -1664,7 +1695,7 @@
     font-weight: 800;
 
     cursor: pointer;
-    transition: 0.2s;
+    transition: background-color 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s, transform 0.2s, filter 0.2s, opacity 0.2s;
 }
 
 .error-button:hover {
@@ -1720,7 +1751,7 @@
     font-size: 13px;
     font-weight: 800;
 
-    transition: 0.2s;
+    transition: background-color 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s, transform 0.2s, filter 0.2s, opacity 0.2s;
 }
 
 .news-more:hover,
@@ -1805,7 +1836,7 @@
     font-weight: 900;
     letter-spacing: 1.4px;
 
-    transition: 0.2s;
+    transition: background-color 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s, transform 0.2s, filter 0.2s, opacity 0.2s;
 }
 
 /* fenêtre « Lire la suite » */
@@ -1865,7 +1896,7 @@
     font-weight: 800;
 
     cursor: pointer;
-    transition: 0.2s;
+    transition: background-color 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s, transform 0.2s, filter 0.2s, opacity 0.2s;
 }
 
 .modal-button:hover {
@@ -2086,7 +2117,7 @@
 
                 <span class="status-dot"></span>
 
-                <span id="launcherUpdateStatus">
+                <span id="launcherUpdateStatus" role="status" aria-live="polite">
     Vérification de la version...
                 </span>
 
@@ -2186,7 +2217,7 @@
     style="display: none;"
 >
 
-    <div class="changelog-page">
+    <div class="changelog-page" tabindex="0">
 
         <h1>Changelog</h1>
 
@@ -2227,7 +2258,7 @@
             Logs de CobbleRealm Launcher et de Minecraft.
         </p>
 
-        <div class="console-box" id="consoleOutput">
+        <div class="console-box" id="consoleOutput" role="log" aria-live="off" aria-label="Journal du launcher et de Minecraft" tabindex="0">
             <div>[CobbleRealm] Console prête.</div>
         </div>
 
@@ -2245,7 +2276,7 @@
     style="display: none;"
 >
 
-    <div class="settings-page">
+    <div class="settings-page" tabindex="0">
 
         <h1>Paramètres</h1>
 
@@ -2265,7 +2296,7 @@
                     </p>
                 </div>
 
-                <select id="ramSelect">
+                <select id="ramSelect" aria-label="Mémoire RAM allouée à Minecraft">
                     <option value="4">4 Go</option>
                     <option value="6">6 Go</option>
                     <option value="8" selected>8 Go</option>
@@ -4351,6 +4382,86 @@ const FALLBACK_NEWS = {
     if (window.cobbleRealm && window.cobbleRealm.onChangelogUpdated) {
         window.cobbleRealm.onChangelogUpdated(renderChangelog);
     }
+
+    /* =========================
+       ACCESSIBILITÉ : CLAVIER ET RACCOURCIS
+    ========================== */
+
+    const MENU_SHORTCUTS = { "1": homeButton, "2": changelogButton, "3": consoleButton, "4": settingsButton };
+
+    function modalIsOpen() {
+
+        return document.getElementById("microsoftModal").classList.contains("show") ||
+            document.getElementById("newsModal").classList.contains("show");
+    }
+
+    /* Le menu est accessible au clavier (Tab, Entrée, Espace) et annonce la page courante. */
+    document.querySelectorAll(".menu-item").forEach((item) => {
+
+        item.setAttribute("role", "button");
+        item.setAttribute("tabindex", "0");
+
+        item.addEventListener("keydown", (event) => {
+
+            if (event.ctrlKey || event.altKey || event.metaKey) {
+                return;
+            }
+
+            if (event.key === "Enter" || event.key === " ") {
+
+                event.preventDefault();
+                item.click();
+            }
+        });
+
+        new MutationObserver(() => {
+
+            if (item.classList.contains("active")) {
+                item.setAttribute("aria-current", "page");
+            } else {
+                item.removeAttribute("aria-current");
+            }
+
+        }).observe(item, { attributes: true, attributeFilter: ["class"] });
+    });
+
+    homeButton.setAttribute("aria-current", "page");
+
+    /* Raccourcis : Alt+1 à Alt+4 changent de page, Ctrl+Entrée lance le jeu. */
+    document.addEventListener("keydown", (event) => {
+
+        if (event.defaultPrevented || modalIsOpen()) {
+            return;
+        }
+
+        if (event.altKey && !event.ctrlKey && !event.metaKey && MENU_SHORTCUTS[event.key]) {
+
+            event.preventDefault();
+            MENU_SHORTCUTS[event.key].click();
+            MENU_SHORTCUTS[event.key].focus();
+
+            return;
+        }
+
+        if (event.ctrlKey && !event.altKey && event.key === "Enter") {
+
+            event.preventDefault();
+
+            if (!playButton.disabled) {
+                playButton.click();
+            }
+        }
+    });
+
+    /* « Lire la suite » : le focus reste dans la fenêtre tant qu'elle est ouverte. */
+    document.addEventListener("keydown", (event) => {
+
+        if (event.key === "Tab" && document.getElementById("newsModal").classList.contains("show")) {
+
+            event.preventDefault();
+            document.getElementById("newsModalClose").focus();
+        }
+    });
 
     checkMicrosoftSession();
     refreshAppInfo();

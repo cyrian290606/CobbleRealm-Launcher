@@ -39,6 +39,8 @@ Ce fichier présente, version après version, ce qui change pour les joueurs.
 - La zone du bouton JOUER garde une taille stable quand un téléchargement, un avertissement ou un message s'affiche : le bouton ne bouge plus.
 - Le message « nouvelle version du launcher prête » s'affiche dans la barre de gauche, avec un bouton pour redémarrer.
 - Quand tu n'es pas connecté, le compte s'affiche en gris avec une indication claire pour te connecter (il apparaissait en vert, comme si tout allait bien).
+- Le launcher s'utilise entièrement au clavier : Tab pour passer d'un élément à l'autre, avec un contour bien visible sur l'élément sélectionné, Entrée ou Espace pour valider, Échap pour fermer une fenêtre.
+- Raccourcis clavier : Alt+1 à Alt+4 pour changer de page (Accueil, Changelog, Console, Paramètres) et Ctrl+Entrée pour lancer le jeu.
 - Le compte Microsoft et la fenêtre de connexion peuvent s'utiliser au clavier (Entrée, flèches, Tab, Échap).
 - L'annonce s'adapte à la taille de ta fenêtre : sur une petite fenêtre, elle se réduit et un bouton « Lire la suite » affiche le texte complet.
 

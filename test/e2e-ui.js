@@ -359,6 +359,98 @@ const MEASURE = `(() => {
   }
   await ev("setPlayState('JOUER','▶',false)");
 
+  /* ---- Groupe 7 : accessibilité ---- */
+  await size(1200, 700);
+  await ev("hideDeviceCode(); closeAccountMenu(); document.getElementById('homeButton').click(); showDisconnected(); setPlayState('JOUER','▶',false)");
+  await ev("window.__playClicks = 0; document.getElementById('playButton').addEventListener('click', (e) => { window.__playClicks++; e.stopImmediatePropagation(); e.preventDefault(); }, true)");
+
+  const chord = async (modifiers, k, code, vk) => {
+    await send("Input.dispatchKeyEvent", { type: "keyDown", modifiers, key: k, code, windowsVirtualKeyCode: vk });
+    await send("Input.dispatchKeyEvent", { type: "keyUp", modifiers, key: k, code, windowsVirtualKeyCode: vk });
+    await sleep(150);
+  };
+  const ALT = 1, CTRL = 2;
+  const visibleView = () => ev("['homeView','changelogView','consoleView','settingsView'].find((id) => document.getElementById(id).style.display !== 'none')");
+
+  const roles = await ev("({ ok: [...document.querySelectorAll('.menu-item')].every((i) => i.getAttribute('role') === 'button' && i.tabIndex === 0), current: [...document.querySelectorAll('.menu-item[aria-current]')].map((i) => i.id), status: document.getElementById('launcherUpdateStatus').getAttribute('role'), ram: !!document.getElementById('ramSelect').getAttribute('aria-label'), log: document.getElementById('consoleOutput').getAttribute('role') })");
+  check("rôles : menu = boutons au clavier, page courante annoncée, statut et journal étiquetés", roles.ok && JSON.stringify(roles.current) === '["homeButton"]' && roles.status === "status" && roles.ram && roles.log === "log", JSON.stringify(roles));
+
+  await chord(ALT, "2", "Digit2", 50);
+  const nav2 = [await visibleView(), await ev("document.querySelector('.menu-item[aria-current]').id")];
+  await chord(ALT, "3", "Digit3", 51);
+  const nav3 = await visibleView();
+  await chord(ALT, "4", "Digit4", 52);
+  const nav4 = await visibleView();
+  await chord(ALT, "1", "Digit1", 49);
+  const nav1 = await visibleView();
+  check("raccourcis : Alt+2 Changelog, Alt+3 Console, Alt+4 Paramètres, Alt+1 Accueil (et page courante mise à jour)",
+    nav2[0] === "changelogView" && nav2[1] === "changelogButton" && nav3 === "consoleView" && nav4 === "settingsView" && nav1 === "homeView", JSON.stringify([nav2, nav3, nav4, nav1]));
+
+  await ev("document.getElementById('consoleButton').focus()");
+  await key("Enter", "Enter", 13);
+  const viaEnter = await visibleView();
+  await ev("document.getElementById('homeButton').focus()");
+  await key(" ", "Space", 32);
+  check("menu : Entrée et Espace ouvrent la page ciblée", viaEnter === "consoleView" && (await visibleView()) === "homeView", viaEnter);
+
+  await chord(CTRL, "Enter", "Enter", 13);
+  const clicks1 = await ev("window.__playClicks");
+  await ev("setPlayState('VÉRIFICATION...','⏳',true)");
+  await chord(CTRL, "Enter", "Enter", 13);
+  const clicks2 = await ev("window.__playClicks");
+  await ev("setPlayState('JOUER','▶',false)");
+  check("raccourci Ctrl+Entrée : lance le jeu seulement quand le bouton est actif", clicks1 === 1 && clicks2 === 1, clicks1 + " / " + clicks2);
+
+  /* un raccourci ne doit jamais agir derrière une fenêtre ouverte */
+  await ev("showDeviceCode({ userCode: 'AB12CD34', verificationUri: 'https://microsoft.com/devicelogin', expiresIn: 900 })");
+  await chord(ALT, "2", "Digit2", 50);
+  const blocked = await visibleView();
+  await chord(CTRL, "Enter", "Enter", 13);
+  const clicks3 = await ev("window.__playClicks");
+  await key("Escape", "Escape", 27); await sleep(250);
+  check("raccourcis ignorés tant qu'une fenêtre est ouverte", blocked === "homeView" && clicks3 === 1, blocked + " / " + clicks3);
+
+  /* parcours complet au clavier : chaque élément atteint est visible ET entouré d'un anneau net */
+  await ev("document.activeElement && document.activeElement.blur()");
+  /* un clic sur une zone non interactive (le logo) remet le point de départ de Tab au début de la page */
+  const brand = await ev("(() => { const r = document.querySelector('.brand-title').getBoundingClientRect(); return { x: r.x + 5, y: r.y + 5 }; })()");
+  await send("Input.dispatchMouseEvent", { type: "mousePressed", x: brand.x, y: brand.y, button: "left", clickCount: 1 });
+  await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: brand.x, y: brand.y, button: "left", clickCount: 1 });
+  await ev("showConnectedAccount('joueur@mail.com'); loadLauncherNews && renderNews(FALLBACK_NEWS)");
+  await size(1366, 768);
+  const visited = [];
+  for (let i = 0; i < 40; i++) {
+    await key("Tab", "Tab", 9);
+    const f = await ev(`(() => { const e = document.activeElement; if (!e || e === document.body) return null; const r = e.getBoundingClientRect(), c = getComputedStyle(e);
+      return { id: e.id || e.className.toString().slice(0, 30) || e.tagName, w: Math.round(r.width), h: Math.round(r.height), style: c.outlineStyle, width: parseFloat(c.outlineWidth), shadow: c.boxShadow !== 'none' }; })()`);
+    if (!f) break;
+    visited.push(f);
+    if (visited.length > 1 && visited[0].id === f.id) break;
+  }
+  const ids = visited.map((v) => v.id);
+  const want = ["homeButton", "changelogButton", "consoleButton", "settingsButton", "microsoftAccount", "discordButton", "siteButton", "shopButton", "playButton"];
+  const missing = want.filter((id) => !ids.includes(id));
+  const invisible = visited.filter((v) => v.w === 0 || v.h === 0).map((v) => v.id);
+  const noRing = visited.filter((v) => !(v.style !== "none" && v.width >= 2)).map((v) => v.id);
+  check("Tab : parcourt menu, compte, Discord, Site, Boutique et JOUER, sans élément caché", missing.length === 0 && invisible.length === 0, "manquants : " + missing.join(",") + " ; cachés : " + invisible.join(",") + " ; ordre : " + ids.join(" > "));
+  check("focus visible : chaque élément atteint au clavier a un anneau net (≥ 2 px)", noRing.length === 0, noRing.join(", "));
+  const order = ids.indexOf("homeButton") < ids.indexOf("microsoftAccount") && ids.indexOf("microsoftAccount") < ids.indexOf("discordButton") && ids.indexOf("discordButton") < ids.indexOf("playButton");
+  check("ordre de tabulation logique : menu, compte, liens du haut, JOUER", order, ids.join(" > "));
+
+  await ev("document.getElementById('playButton').focus()");
+  await shot("g7-focus-jouer-1366x768.png");
+  await ev("document.getElementById('settingsButton').focus()");
+  await shot("g7-focus-menu-1366x768.png");
+
+  /* « Lire la suite » : le focus ne s'échappe pas */
+  await size(900, 600);
+  await ev("openNewsModal()");
+  await key("Tab", "Tab", 9); await key("Tab", "Tab", 9); await key("Tab", "Tab", 9);
+  const trapped = await ev("document.activeElement.id");
+  await key("Escape", "Escape", 27); await sleep(250);
+  check("fenêtre « Lire la suite » : Tab garde le focus dans la fenêtre, Échap la ferme", trapped === "newsModalClose" && !(await ev("document.getElementById('newsModal').classList.contains('show')")), trapped);
+  await size(1200, 700);
+
   /* Aucune erreur dans la page */
   const problems = events.filter((e) => e.method === "Runtime.exceptionThrown" || (e.method === "Log.entryAdded" && e.params.entry.level === "error" && !/Failed to load resource|ERR_CONNECTION/.test(e.params.entry.text)));
   check("aucune erreur CSP / exception dans la page", problems.length === 0, JSON.stringify(problems.slice(0, 2).map((p) => p.params.entry ? p.params.entry.text : p.params.exceptionDetails.text)));
