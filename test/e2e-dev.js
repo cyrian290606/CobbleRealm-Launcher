@@ -1,6 +1,6 @@
 /*
  * Test de bout en bout avec le VRAI Electron, en mode développement isolé (dossier de jeu, APPDATA
- * et serveur de mise à jour jetables). Pilotage via le protocole de débogage (port 9333, serveur 8799).
+ * et serveur de mise à jour jetables). Pilotage via le protocole de débogage (ports aléatoires, jamais ceux d'un autre test en cours).
  * N'appelle jamais launchMinecraft avec une mise à jour réussie : aucune connexion Microsoft.
  *
  *   node test/e2e-dev.js [dossierProjet] [dossierCaptures]
@@ -13,6 +13,9 @@ const shots = process.argv[3];     // dossier optionnel pour les captures d'écr
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "cr-e2e-"));
 const log = (...a) => console.log(...a);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const randomPort = () => 20000 + Math.floor(Math.random() * 20000);
+const DEBUG_PORT = randomPort();
+const SERVER_PORT = randomPort();
 const results = [];
 const check = (name, ok, detail = "") => { results.push(ok); log(`  ${ok ? "OK   " : "ECHEC"} ${name}${detail ? " — " + detail : ""}`); };
 
@@ -30,7 +33,7 @@ const check = (name, ok, detail = "") => { results.push(ok); log(`  ${ok ? "OK  
   check("publish.js prépare la publication", pub.status === 0, (pub.stdout.match(/Version .*/) || [pub.stderr])[0]);
 
   /* 2. serveur de test (débit limité pour voir la progression) */
-  const server = spawn(process.execPath, [path.join(project, "tools", "test-server.js"), out, "--port", "8799", "--speed", "1500"], { stdio: ["ignore", "pipe", "pipe"] });
+  const server = spawn(process.execPath, [path.join(project, "tools", "test-server.js"), out, "--port", String(SERVER_PORT), "--speed", "1500"], { stdio: ["ignore", "pipe", "pipe"] });
   await new Promise((resolve) => server.stdout.on("data", (d) => String(d).includes("Serveur de test") && resolve()));
 
   /* 3. Electron en mode développement isolé */
@@ -38,17 +41,17 @@ const check = (name, ok, detail = "") => { results.push(ok); log(`  ${ok ? "OK  
   fs.mkdirSync(appdata, { recursive: true });
   const electron = require(path.join(project, "node_modules", "electron"));
   const env = { ...process.env, APPDATA: appdata, COBBLEREALM_DEV: "1", COBBLEREALM_ROOT: game,
-    COBBLEREALM_MANIFEST_URL: "http://127.0.0.1:8799/manifest.json", ELECTRON_ENABLE_LOGGING: "1" };
+    COBBLEREALM_MANIFEST_URL: `http://127.0.0.1:${SERVER_PORT}/manifest.json`, ELECTRON_ENABLE_LOGGING: "1" };
   delete env.ELECTRON_RUN_AS_NODE;
   /* --user-data-dir isole les réglages et la session Microsoft ; COBBLEREALM_ROOT isole le dossier de jeu.
      (APPDATA seul ne suffit PAS sous Windows : Electron lit le vrai dossier Roaming via l'API système.) */
-  const app = spawn(electron, [".", "--remote-debugging-port=9333", `--user-data-dir=${path.join(tmp, "userdata")}`], { cwd: project, env });
+  const app = spawn(electron, [".", `--remote-debugging-port=${DEBUG_PORT}`, "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows", "--disable-features=CalculateNativeWinOcclusion", `--user-data-dir=${path.join(tmp, "userdata")}`], { cwd: project, env });
   let appOut = ""; app.stdout.on("data", (d) => appOut += d); app.stderr.on("data", (d) => appOut += d);
 
   /* 4. protocole de débogage */
   let target = null;
   for (let i = 0; i < 60 && !target; i++) {
-    try { target = (await (await fetch("http://127.0.0.1:9333/json/list")).json()).find((t) => t.type === "page" && t.url.includes("index.html")); } catch {}
+    try { target = (await (await fetch(`http://127.0.0.1:${DEBUG_PORT}/json/list`)).json()).find((t) => t.type === "page" && t.url.includes("index.html")); } catch {}
     if (!target) await sleep(500);
   }
   if (!target) throw new Error("fenêtre introuvable\n" + appOut.slice(-1500));

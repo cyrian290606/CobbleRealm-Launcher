@@ -50,7 +50,8 @@
         ========================== */
 
         .sidebar {
-            width: 265px;
+            /* s'adapte à la largeur de la fenêtre : 265 px confortable, jamais moins de 210 px */
+            width: clamp(210px, 22vw, 265px);
             height: 100%;
             flex-shrink: 0;
             padding: 28px 18px;
@@ -78,9 +79,11 @@
         .brand-title {
             margin: 0;
 
-            font-size: 25px;
+            /* le logo texte rétrécit avec la barre latérale au lieu d'être coupé */
+            font-size: clamp(17px, calc((22vw - 50px) / 8.5), 25px);
             font-weight: 900;
-            letter-spacing: 2px;
+            letter-spacing: clamp(1px, 0.15vw, 2px);
+            white-space: nowrap;
 
             background:
                 linear-gradient(
@@ -197,6 +200,11 @@
             margin-bottom: 9px;
             font-size: 16px;
             font-weight: 800;
+
+            /* reste sur une seule ligne, même dans la barre latérale étroite */
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .account-status {
@@ -419,7 +427,8 @@
             letter-spacing: 1.8px;
         }
 
-        .update-card h1 {
+        .update-card h1,
+        .news-modal-card h1 {
             margin:
                 15px 0 10px;
 
@@ -1095,10 +1104,6 @@
 
 @media (max-width: 1100px) {
 
-            .sidebar {
-                width: 230px;
-            }
-
             .update-card {
                 width: 430px;
             }
@@ -1113,6 +1118,194 @@
                     62% center;
             }
         }
+
+/* Fenêtres peu hautes : espacements resserrés, mêmes proportions */
+@media (max-height: 700px) {
+
+            .sidebar {
+                padding: 20px 18px;
+            }
+
+            .brand {
+                margin-bottom: 22px;
+            }
+
+            .menu {
+                gap: 8px;
+            }
+
+            .menu-item {
+                height: 46px;
+            }
+
+            .play-panel {
+                bottom: 28px;
+            }
+
+            .play-button {
+                height: 64px;
+                font-size: 24px;
+            }
+        }
+
+/* =========================
+   ANNONCE : S'ADAPTE À L'ESPACE DISPONIBLE
+   (étapes choisies par le script selon la place restante :
+    complète -> compacte -> minimale -> simple pastille)
+========================= */
+
+.news-more,
+.news-pill {
+    display: none;
+
+    font-family: inherit;
+    cursor: pointer;
+}
+
+.news-more {
+    margin-top: 12px;
+    padding: 8px 14px;
+
+    border-radius: 10px;
+
+    color: #62eaff;
+    background: rgba(13, 131, 179, 0.15);
+    border: 1px solid rgba(57, 221, 255, 0.42);
+
+    font-size: 13px;
+    font-weight: 800;
+
+    transition: 0.2s;
+}
+
+.news-more:hover,
+.news-pill:hover {
+    background: rgba(13, 131, 179, 0.32);
+}
+
+.update-card[data-stage="compact"] {
+    width: min(400px, calc(100vw - 340px));
+    padding: 16px 18px 18px;
+}
+
+.update-card[data-stage="compact"] h1 {
+    margin: 11px 0 8px;
+    font-size: 22px;
+}
+
+.update-card[data-stage="compact"] .update-text:nth-of-type(n+2) {
+    display: none;
+}
+
+.update-card[data-stage="compact"] .update-text {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    overflow: hidden;
+    font-size: 13px;
+}
+
+.update-card[data-stage="mini"] {
+    width: min(340px, calc(100vw - 340px));
+    padding: 12px 16px 14px;
+}
+
+.update-card[data-stage="mini"] h1 {
+    margin: 9px 0 0;
+    font-size: 18px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.update-card[data-stage="mini"] .update-text {
+    display: none;
+}
+
+.update-card[data-stage="compact"] .news-more,
+.update-card[data-stage="mini"] .news-more {
+    display: inline-block;
+}
+
+/* dernière étape : une simple pastille cliquable, aucun chevauchement possible */
+.update-card[data-stage="pill"] {
+    width: auto;
+    padding: 0;
+
+    background: none;
+    border: none;
+    box-shadow: none;
+    backdrop-filter: none;
+}
+
+.update-card[data-stage="pill"] > *:not(.news-pill) {
+    display: none;
+}
+
+.update-card[data-stage="pill"] .news-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+
+    padding: 8px 14px;
+
+    border-radius: 999px;
+
+    color: #62eaff;
+    background: rgba(5, 23, 45, 0.62);
+    border: 1px solid rgba(57, 221, 255, 0.5);
+    backdrop-filter: blur(12px);
+
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 1.4px;
+
+    transition: 0.2s;
+}
+
+/* fenêtre « Lire la suite » */
+.news-modal-card {
+    width: min(640px, 92vw);
+    max-height: 86vh;
+    overflow-y: auto;
+
+    text-align: left;
+
+    /* barre de défilement fine, aux couleurs du launcher */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(99, 231, 255, 0.45) transparent;
+}
+
+.modal-button:focus-visible {
+    outline: 2px solid #63e7ff;
+    outline-offset: 3px;
+}
+
+.news-modal-card .update-text {
+    max-width: none;
+}
+
+.modal-button {
+    margin-top: 18px;
+    height: 42px;
+    padding: 0 22px;
+
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+
+    color: white;
+    background: rgba(99, 231, 255, 0.18);
+
+    font-size: 14px;
+    font-weight: 800;
+
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.modal-button:hover {
+    background: rgba(99, 231, 255, 0.3);
+}
 
     </style>
 
@@ -1521,6 +1714,28 @@
             de ton compte Microsoft...
         </div>
 
+
+    </div>
+
+</div>
+
+
+<!-- Annonce complète (bouton « Lire la suite ») -->
+<div
+    class="microsoft-modal"
+    id="newsModal"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Annonce"
+>
+
+    <div class="modal-card news-modal-card">
+
+        <div id="newsModalBody"></div>
+
+        <button class="modal-button" id="newsModalClose">
+            Fermer
+        </button>
 
     </div>
 
@@ -2826,36 +3041,155 @@ const FALLBACK_NEWS = {
             versionBadge.textContent = `★ CobbleRealm ${versionText}`;
         }
 
-        card.textContent = "";
-
-        const badge = document.createElement("div");
-        badge.className = "update-badge";
-        badge.textContent = badgeText;
-        card.appendChild(badge);
-
-        const title = document.createElement("h1");
-
-        if (titleHighlight && titleText) {
-            title.appendChild(document.createTextNode(`${titleText} `));
-
-            const highlight = document.createElement("span");
-            highlight.className = "realm-gradient";
-            highlight.textContent = titleHighlight;
-            title.appendChild(highlight);
-        } else if (titleText) {
-            title.textContent = titleText;
-        }
-
-        card.appendChild(title);
-
         const paragraphs = Array.isArray(safeNews.paragraphs) && safeNews.paragraphs.length > 0
             ? safeNews.paragraphs
             : FALLBACK_NEWS.paragraphs;
 
-        paragraphs.forEach((paragraph) => {
-            card.appendChild(buildNewsParagraph(paragraph));
+        currentNewsView = { badgeText, titleText, titleHighlight, paragraphs };
+
+        card.textContent = "";
+        fillNewsNodes(card, currentNewsView);
+
+        /* Boutons utilisés quand la place manque (voir fitNews) */
+        const more = document.createElement("button");
+        more.className = "news-more";
+        more.textContent = "Lire la suite";
+        more.addEventListener("click", openNewsModal);
+        card.appendChild(more);
+
+        const pill = document.createElement("button");
+        pill.className = "news-pill";
+        pill.textContent = badgeText;
+        pill.setAttribute("aria-label", "Lire l'annonce : " + badgeText);
+        pill.addEventListener("click", openNewsModal);
+        card.appendChild(pill);
+
+        queueFitNews();
+    }
+
+
+    /* Construit badge + titre + paragraphes (texte seulement, jamais de HTML venant du réseau). */
+    function fillNewsNodes(container, view) {
+
+        const badge = document.createElement("div");
+        badge.className = "update-badge";
+        badge.textContent = view.badgeText;
+        container.appendChild(badge);
+
+        const title = document.createElement("h1");
+
+        if (view.titleHighlight && view.titleText) {
+            title.appendChild(document.createTextNode(`${view.titleText} `));
+
+            const highlight = document.createElement("span");
+            highlight.className = "realm-gradient";
+            highlight.textContent = view.titleHighlight;
+            title.appendChild(highlight);
+        } else if (view.titleText) {
+            title.textContent = view.titleText;
+        }
+
+        container.appendChild(title);
+
+        view.paragraphs.forEach((paragraph) => {
+            container.appendChild(buildNewsParagraph(paragraph));
         });
     }
+
+
+    /*
+     * L'annonce s'adapte à la place disponible, sans jamais recouvrir le panneau JOUER :
+     * complète -> compacte -> minimale -> simple pastille (« Lire la suite » ouvre le texte entier).
+     */
+    const NEWS_STAGES = ["", "compact", "mini", "pill"];
+    const NEWS_GAP = 16;
+    let currentNewsView = null;
+
+    function fitNews() {
+
+        const card = document.getElementById("updateCard");
+        const panel = document.querySelector(".play-panel");
+
+        if (!card || !panel || !card.firstChild) {
+            return;
+        }
+
+        for (const stage of NEWS_STAGES) {
+
+            card.dataset.stage = stage;
+
+            const c = card.getBoundingClientRect();
+            const p = panel.getBoundingClientRect();
+
+            const sideBySide = p.right + NEWS_GAP > c.left && p.left - NEWS_GAP < c.right;
+            const insideWindow = c.bottom <= window.innerHeight - NEWS_GAP;
+
+            if (insideWindow && (!sideBySide || c.bottom + NEWS_GAP <= p.top)) {
+                return;
+            }
+        }
+    }
+
+    /* Immédiat (sans attendre l'affichage) : fonctionne même si la fenêtre est cachée derrière une autre. */
+    function queueFitNews() {
+
+        fitNews();
+    }
+
+    window.addEventListener("resize", queueFitNews);
+
+    if (window.ResizeObserver) {
+        new ResizeObserver(queueFitNews).observe(document.querySelector(".play-panel"));
+    }
+
+    /* Tout changement du contenu du panneau (progression, erreur, avertissement) relance l'ajustement. */
+    new MutationObserver(queueFitNews).observe(
+        document.querySelector(".play-panel"),
+        { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["hidden", "style", "class"] }
+    );
+
+
+    /* Fenêtre « Lire la suite » */
+    const newsModal = document.getElementById("newsModal");
+    const newsModalBody = document.getElementById("newsModalBody");
+    const newsModalClose = document.getElementById("newsModalClose");
+    let newsModalReturnFocus = null;
+
+    function openNewsModal() {
+
+        if (!currentNewsView) {
+            return;
+        }
+
+        newsModalReturnFocus = document.activeElement;
+        newsModalBody.textContent = "";
+        fillNewsNodes(newsModalBody, currentNewsView);
+        newsModal.classList.add("show");
+        newsModalClose.focus();
+    }
+
+    function closeNewsModal() {
+
+        newsModal.classList.remove("show");
+
+        if (newsModalReturnFocus && newsModalReturnFocus.focus) {
+            newsModalReturnFocus.focus();
+        }
+    }
+
+    newsModalClose.addEventListener("click", closeNewsModal);
+
+    newsModal.addEventListener("click", (event) => {
+        if (event.target === newsModal) {
+            closeNewsModal();
+        }
+    });
+
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && newsModal.classList.contains("show")) {
+            closeNewsModal();
+        }
+    });
 
 
     async function loadLauncherNews() {
