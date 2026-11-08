@@ -1,0 +1,187 @@
+"use strict";
+
+/*
+ * Orchestrateur de mise à jour du modpack.
+ *
+ *   const updater = createUpdater({ gameRoot, manifestUrl, onProgress });
+ *   await updater.check();                 // lit le manifest (1 seule fois par session) et calcule le plan
+ *   await updater.sync();                  // télécharge + applique
+ *   await updater.repair();                // idem, mais revérifie TOUS les fichiers
+ *
+ * Le jeu ne doit démarrer que si sync()/repair() ont réussi (ok === true).
+ */
+
+const fs = require("fs");
+const path = require("path");
+const { fetchManifest } = require("./manifest");
+const { buildPlan } = require("./diff");
+const { downloadAll } = require("./download");
+const { applyPlan, purgeRemoved } = require("./apply");
+const { readLock } = require("./lock");
+const { UpdateError, toUpdateError, mo } = require("./errors");
+
+const STAGING = ".staging";
+
+function createUpdater({
+    gameRoot, manifestUrl, onProgress = () => {}, allowLocal = false,
+    fetchOptions = {}, downloadOptions = {}, hooks = {}, now = () => Date.now()
+}) {
+
+    const stagingDir = path.join(gameRoot, STAGING);
+    const hashCache = new Map();
+    let manifestPromise = null;
+    let manifestLoaded = false;     // vrai dès que le manifest a pu être lu au moins une fois
+    let running = null;
+
+    const emit = (event) => { try { onProgress(event); } catch { /* l'interface ne doit jamais casser la mise à jour */ } };
+
+    /* Le manifest n'est téléchargé qu'une fois par session (sauf échec ou force). */
+    function getManifest({ force = false } = {}) {
+
+        if (force) manifestPromise = null;
+
+        if (!manifestPromise) {
+            manifestPromise = fetchManifest(manifestUrl, { allowLocal, ...fetchOptions })
+                .then((manifest) => { manifestLoaded = true; return manifest; })
+                .catch((error) => { manifestPromise = null; throw error; });
+        }
+
+        return manifestPromise;
+    }
+
+    function installedInfo() {
+        const { lock, valid } = readLock(gameRoot);
+        return { valid, version: lock ? lock.version : null, lock };
+    }
+
+    async function makePlan(manifest, { repair }) {
+
+        emit({ step: "scan", message: "Vérification des fichiers...", percent: 0 });
+
+        const { lock } = installedInfo();
+
+        const plan = await buildPlan({
+            manifest, gameRoot, lock, repair, hashCache,
+            onScan: (done, total) => emit({ step: "scan", message: "Vérification des fichiers...", percent: Math.floor((done / total) * 100) })
+        });
+
+        emit({
+            step: "plan",
+            filesToDownload: plan.uniqueDownloads.length,
+            bytesToDownload: plan.bytesToDownload,
+            message: plan.uniqueDownloads.length
+                ? `${plan.uniqueDownloads.length} fichier${plan.uniqueDownloads.length > 1 ? "s" : ""} à télécharger (${mo(plan.bytesToDownload)})`
+                : "Aucun fichier à télécharger"
+        });
+
+        return plan;
+    }
+
+    /**
+     * Lecture seule : que faudrait-il faire ? Si le manifest est injoignable, renvoie offline: true.
+     */
+    async function check() {
+
+        const installed = installedInfo();
+
+        try {
+            const manifest = await getManifest();
+            const plan = await makePlan(manifest, { repair: false });
+
+            return {
+                ok: true, offline: false, manifest,
+                installedVersion: installed.version, remoteVersion: manifest.version, valid: installed.valid,
+                updateAvailable: !plan.isEmpty || !installed.valid || installed.version !== manifest.version,
+                filesToDownload: plan.uniqueDownloads.length, bytesToDownload: plan.bytesToDownload
+            };
+
+        } catch (error) {
+
+            const converted = toUpdateError(error);
+
+            if (["OFFLINE", "SERVER"].includes(converted.code)) {
+                return {
+                    ok: false, offline: true, error: converted,
+                    installedVersion: installed.version, remoteVersion: null,
+                    valid: installed.valid, updateAvailable: false
+                };
+            }
+
+            throw converted;
+        }
+    }
+
+    async function runSync({ repair }) {
+
+        const manifest = await getManifest();
+        const installed = installedInfo();
+        const plan = await makePlan(manifest, { repair });
+
+        const mustWriteLock = !plan.isEmpty || plan.adopted.length > 0 || !installed.valid || installed.version !== manifest.version;
+
+        if (!mustWriteLock) {
+            purgeRemoved(gameRoot, { now: now() });
+            emit({ step: "done", percent: 100, message: "CobbleRealm est à jour" });
+            return { ok: true, offline: false, version: manifest.version, downloaded: 0, bytes: 0, quarantined: [] };
+        }
+
+        if (plan.uniqueDownloads.length) {
+            await downloadAll(plan.uniqueDownloads, { stagingDir, allowLocal, onProgress: emit, ...downloadOptions });
+        }
+
+        emit({ step: "apply", percent: 100, message: "Installation..." });
+
+        const result = applyPlan({ plan, manifest, gameRoot, stagingDir, hooks, now: now(), onProgress: emit });
+
+        emit({ step: "done", percent: 100, message: "CobbleRealm est à jour" });
+
+        return {
+            ok: true, offline: false, version: manifest.version,
+            downloaded: plan.uniqueDownloads.length, bytes: plan.bytesToDownload, quarantined: result.quarantined
+        };
+    }
+
+    /**
+     * Synchronise l'installation avec le manifest.
+     * Si le manifest est injoignable mais qu'une installation valide existe : { ok: true, offline: true }.
+     */
+    function sync({ repair = false } = {}) {
+
+        if (running) return running;
+
+        running = (async () => {
+
+            try {
+                return await runSync({ repair });
+
+            } catch (error) {
+
+                const converted = toUpdateError(error);
+                const installed = installedInfo();
+
+                /* Hors-ligne autorisé seulement si le manifest n'a jamais pu être lu :
+                   une panne en plein téléchargement laisse une mise à jour incomplète, donc pas de jeu. */
+                if (installed.valid && ["OFFLINE", "SERVER"].includes(converted.code) && !manifestLoaded) {
+                    return { ok: true, offline: true, version: installed.version, warning: converted.message };
+                }
+
+                throw converted;
+
+            } finally {
+                running = null;
+            }
+        })();
+
+        return running;
+    }
+
+    return {
+        getManifest,
+        check, sync,
+        repair: () => sync({ repair: true }),
+        status: installedInfo,
+        stagingDir
+    };
+}
+
+module.exports = { createUpdater, UpdateError };

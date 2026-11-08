@@ -27,28 +27,8 @@ const ALLOWED_URL_HOSTS = ["github.com"];
 
 /* ============================== chemins ============================== */
 
-const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
-
-/* Retourne un message d'erreur, ou null si le chemin relatif est sûr. */
-function validateRelPath(rel) {
-
-    if (typeof rel !== "string" || rel.length === 0) return "chemin vide";
-    if (rel.length > 240) return "chemin trop long";
-    if (rel.includes("\\")) return "antislash interdit (utiliser '/')";
-    if (rel.includes("\0")) return "caractère nul";
-    if (rel.startsWith("/") || /^[a-zA-Z]:/.test(rel)) return "chemin absolu";
-
-    for (const segment of rel.split("/")) {
-
-        if (segment === "") return "segment vide";
-        if (segment === "." || segment === "..") return "segment '.' ou '..'";
-        if (/[<>:"|?*\x00-\x1f]/.test(segment)) return "caractère interdit sous Windows";
-        if (/[. ]$/.test(segment)) return "nom finissant par un point ou un espace";
-        if (WINDOWS_RESERVED.test(segment.split(".")[0])) return "nom réservé Windows";
-    }
-
-    return null;
-}
+/* Mêmes règles que le launcher : une seule définition (updater/manifest.js). */
+const { validateRelPath } = require("../updater/manifest.js");
 
 function globToRegExp(pattern) {
 
