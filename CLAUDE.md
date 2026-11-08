@@ -24,7 +24,7 @@ Launcher Electron (Windows uniquement, UI et logs en français) pour le modpack 
 
 - `npm start` : lance l'app en dev (`electron .`).
 - `npm test` : toutes les suites de tests automatiques (sans réseau, sans compte Microsoft).
-- `npm run build` : crée l'installeur NSIS Windows dans `dist/` (electron-builder). Pour tester sans écraser `dist/` : `npm run build -- --config.directories.output=build-out`.
+- `npm run build` : crée l'installeur NSIS Windows dans `dist/` (via `tools/build.js` : electron-builder avec nouvelle tentative automatique si l'antivirus verrouille un fichier, erreur EPERM/EBUSY). Pour tester sans écraser `dist/` : `npm run build -- --config.directories.output=build-out`.
 - `npm run release` : build + publication sur GitHub Releases (variable `GH_TOKEN` requise) pour l'auto-update.
 - `node tools/publish.js <dossierSource> --version x.y.z` : prépare une publication du modpack (manifest v2 + fichiers nommés par leur SHA-256 + `UPLOAD.md`). Ne publie rien, n'écrit jamais dans le dossier source. `--dry-run` simule ; `--check <manifest>` vérifie que les URL répondent.
 - `node tools/test-server.js <publish-out> [--port 8787] [--speed Ko/s] [--cut-after octets]` : serveur local pour répéter une mise à jour.

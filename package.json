@@ -9,8 +9,8 @@
   },
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder --win",
-    "release": "electron-builder --win --publish always",
+    "build": "node tools/build.js",
+    "release": "node tools/build.js --publish",
     "test": "node test/phase1.test.js && node test/publish.test.js && node test/updater.test.js && node test/runtime.test.js && node test/support.test.js && node test/auth.test.js && node test/infos.test.js && node test/animations.test.js && node test/windowstate.test.js"
   },
   "author": "CobbleRealm",
