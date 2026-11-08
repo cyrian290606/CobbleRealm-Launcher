@@ -18,6 +18,7 @@ const { buildPlan } = require("./diff");
 const { downloadAll } = require("./download");
 const { applyPlan, purgeRemoved } = require("./apply");
 const { readLock } = require("./lock");
+const { extractFromBundle } = require("./bundle");
 const { UpdateError, toUpdateError, mo, cancelledError } = require("./errors");
 
 const STAGING = ".staging";
@@ -114,6 +115,28 @@ function createUpdater({
         }
     }
 
+    /*
+     * Télécharge ce que le plan demande : fichiers individuels et bundles, puis extrait les fichiers des bundles
+     * vers .staging/<sha256>.dl (chacun vérifié). À partir de là, l'installation est identique pour tous les fichiers.
+     * Reprise : un contenu déjà extrait n'exige pas de retélécharger son bundle.
+     */
+    async function fetchPlanFiles(plan, signal) {
+
+        const stagedOk = (item) => { try { return fs.statSync(path.join(stagingDir, `${item.sha256}.dl`)).size === item.size; } catch { return false; } };
+        const bundles = [];
+
+        for (const bundle of plan.bundles) {
+            const missing = bundle.contents.filter((c) => !stagedOk(c));
+            if (missing.length) bundles.push({ ...bundle, contents: missing, fileCount: missing.length });
+        }
+
+        await downloadAll([...bundles, ...plan.directDownloads], { stagingDir, allowLocal, onProgress: emit, signal, ...downloadOptions });
+
+        for (const bundle of bundles) {
+            await extractFromBundle(path.join(stagingDir, `${bundle.sha256}.dl`), bundle.contents, stagingDir, bundle.label);
+        }
+    }
+
     async function runSync({ repair }) {
 
         const controller = new AbortController();
@@ -137,7 +160,7 @@ function createUpdater({
 
             if (plan.uniqueDownloads.length) {
                 currentRun.phase = "download";
-                await downloadAll(plan.uniqueDownloads, { stagingDir, allowLocal, onProgress: emit, signal: controller.signal, ...downloadOptions });
+                await fetchPlanFiles(plan, controller.signal);
             }
 
             /* À partir d'ici l'installation des fichiers a commencé : on ne peut plus annuler. */

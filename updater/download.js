@@ -76,7 +76,7 @@ function createProgress({ bytesTotal, filesTotal, onProgress, now = Date.now }) 
         addFree(bytes) { bytesDone += bytes; },
         rewind(bytes) { bytesDone = Math.max(0, bytesDone - bytes); },
         start(label) { active.add(label); },
-        finish(label) { active.delete(label); filesDone++; onProgress(snapshot()); },
+        finish(label, count = 1) { active.delete(label); filesDone += count; onProgress(snapshot()); },
         snapshot
     };
 }
@@ -95,7 +95,7 @@ async function downloadOne(item, ctx) {
     if (await fileSize(finalPath) === item.size) {
         progress.addFree(item.size);
         progress.start(item.label);
-        progress.finish(item.label);
+        progress.finish(item.label, item.fileCount || 1);
         return;
     }
 
@@ -172,7 +172,7 @@ async function downloadOne(item, ctx) {
             }
 
             await renameRetry(partPath, finalPath);
-            progress.finish(item.label);
+            progress.finish(item.label, item.fileCount || 1);
             return;
 
         } catch (error) {
@@ -198,7 +198,7 @@ async function downloadOne(item, ctx) {
 }
 
 /**
- * @param {Array<{sha256,size,url,label}>} items
+ * @param {Array<{sha256,size,url,label,fileCount?}>} items   (fileCount : nombre de fichiers que couvre un bundle)
  * @returns {Promise<void>} résout quand tous les fichiers sont vérifiés dans stagingDir
  */
 async function downloadAll(items, {
@@ -221,7 +221,7 @@ async function downloadAll(items, {
     if (remaining > 0 && freeSpace(stagingDir) < remaining + margin) throw diskFullError(remaining + margin);
 
     const bytesTotal = items.reduce((sum, i) => sum + i.size, 0);
-    const progress = createProgress({ bytesTotal, filesTotal: items.length, onProgress });
+    const progress = createProgress({ bytesTotal, filesTotal: items.reduce((sum, i) => sum + (i.fileCount || 1), 0), onProgress });
     const controller = new AbortController();
 
     if (signal) signal.addEventListener("abort", () => controller.abort(), { once: true });

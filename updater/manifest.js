@@ -86,6 +86,24 @@ function validateManifest(manifest, { allowLocal = false } = {}) {
     const strictDirs = manifest.strictDirs === undefined ? [] : manifest.strictDirs;
     if (!Array.isArray(strictDirs) || strictDirs.some((d) => typeof d !== "string" || validateRelPath(d))) add("strictDirs invalide");
 
+    /* Bundles : lots de petits fichiers (voir updater/bundle.js). */
+    const bundleIds = new Set();
+
+    if (manifest.bundles !== undefined) {
+
+        if (!Array.isArray(manifest.bundles) || manifest.bundles.length > 5000) add("bundles invalide");
+        else {
+            for (const b of manifest.bundles) {
+                if (!b || typeof b !== "object" || !/^[0-9a-f]{64}$/.test(b.id || "")) { add("bundle : id invalide"); continue; }
+                if (!Number.isSafeInteger(b.size) || b.size <= 0 || b.size > 64 * 1024 * 1024) add(`bundle ${b.id.slice(0, 8)} : taille invalide`);
+                if (bundleIds.has(b.id)) add(`bundle ${b.id.slice(0, 8)} : doublon`);
+                bundleIds.add(b.id);
+                try { checkUrl(b.url, { allowedHosts: FILE_HOSTS, allowLocal }); }
+                catch { add(`bundle ${b.id.slice(0, 8)} : URL non autorisée`); }
+            }
+        }
+    }
+
     const publishedKeys = new Set(Array.isArray(manifest.files) ? manifest.files.map((f) => f && String(f.path).toLowerCase()) : []);
 
     if (manifest.remove !== undefined) {
@@ -123,8 +141,14 @@ function validateManifest(manifest, { allowLocal = false } = {}) {
             if (f.nsha256 !== undefined && !/^[0-9a-f]{64}$/.test(f.nsha256)) add(`${f.path} : nsha256 invalide`);
             if (!["managed", "default"].includes(f.policy)) add(`${f.path} : catégorie invalide`);
 
-            try { checkUrl(f.url, { allowedHosts: FILE_HOSTS, allowLocal }); }
-            catch { add(`${f.path} : URL non autorisée`); }
+            if (f.bundle !== undefined) {
+                /* fichier contenu dans un bundle : pas d'URL propre */
+                if (typeof f.bundle !== "string" || !bundleIds.has(f.bundle)) add(`${f.path} : bundle inconnu`);
+                if (f.url !== undefined) add(`${f.path} : un fichier d'un bundle n'a pas d'URL`);
+            } else {
+                try { checkUrl(f.url, { allowedHosts: FILE_HOSTS, allowLocal }); }
+                catch { add(`${f.path} : URL non autorisée`); }
+            }
         }
     }
 

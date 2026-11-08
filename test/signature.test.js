@@ -299,7 +299,7 @@ test("Publication : --sign signe le manifest publié ; sans --sign, avertissemen
     fs.writeFileSync(keyFile, JSON.stringify(primary.file));
     fs.writeFileSync(TRUST, JSON.stringify({ version: 1, keys: [primary.entry, backup.entry], revoked: [] }));
 
-    const run = (extra, outName) => spawnSync(process.execPath, [path.join(__dirname, "..", "tools", "publish.js"), source, "--version", "1.0.0", "--out", path.join(tmp, outName), ...extra],
+    const run = (extra, outName) => spawnSync(process.execPath, [path.join(__dirname, "..", "tools", "publish.js"), source, "--version", "1.0.0", "--out", path.join(tmp, outName), "--no-bundles", ...extra],
         { encoding: "utf8", env: { ...process.env, PUBLISH_REPO_ROOT: path.join(tmp, "repo-" + outName), COBBLEREALM_KEY_PASSPHRASE: PASS } });
 
     const unsigned = run([], "out-nosign");

@@ -28,10 +28,24 @@ function createTestServer({ manifest = null, blobs = new Map(), faults = {}, sig
         faults: { cutAfter: {}, corrupt: new Set(), fail: {}, ignoreRange: false, redirect: {}, ...faults },
         signer,                   // fonction de signature du manifest (ou null : manifest non signé)
         requests: [],             // { path, range }
+        stats: { requests: 0, files: 0, bytes: 0 },   // mesures : requêtes (hors manifest), requêtes de fichiers, octets envoyés
         cutDone: new Set()
     };
 
     const server = http.createServer((req, res) => {
+
+        /* Latence simulée (ms) : reproduit le temps de réponse d'un serveur distant (GitHub ~ 65 ms) ; mesures de volume. */
+        const send = () => handle(req, res);
+        state.stats.requests++;
+        if (new URL(req.url, "http://localhost").pathname.startsWith("/files/") || new URL(req.url, "http://localhost").pathname.startsWith("/f/")) state.stats.files++;
+        const write = res.write.bind(res), end = res.end.bind(res);
+        res.write = (chunk, ...rest) => { if (chunk) state.stats.bytes += Buffer.byteLength(chunk); return write(chunk, ...rest); };
+        res.end = (chunk, ...rest) => { if (chunk && typeof chunk !== "function") state.stats.bytes += Buffer.byteLength(chunk); return end(chunk, ...rest); };
+
+        if (state.faults.latencyMs) setTimeout(send, state.faults.latencyMs); else send();
+    });
+
+    function handle(req, res) {
 
         const url = new URL(req.url, "http://localhost");
         const pathname = url.pathname;
@@ -110,7 +124,7 @@ function createTestServer({ manifest = null, blobs = new Map(), faults = {}, sig
             setTimeout(tick, 100);
         };
         tick();
-    });
+    }
 
     return {
         state,
@@ -120,7 +134,7 @@ function createTestServer({ manifest = null, blobs = new Map(), faults = {}, sig
 }
 
 /* Mode ligne de commande : sert un dossier produit par publish.js. */
-async function serveFolder(dir, { port = 8787, cutAfter = 0, speedKb = 0, signKey = null } = {}) {
+async function serveFolder(dir, { port = 8787, cutAfter = 0, speedKb = 0, signKey = null, latencyMs = 0 } = {}) {
 
     const manifestFile = fs.existsSync(path.join(dir, "docs", "manifest.json"))
         ? path.join(dir, "docs", "manifest.json")
@@ -156,7 +170,17 @@ async function serveFolder(dir, { port = 8787, cutAfter = 0, speedKb = 0, signKe
         signer = (bytes) => sig.signBytes(bytes, privateKey);
     }
 
+    /* Bundles : même réécriture d'URL que pour les fichiers */
+    for (const b of manifest.bundles || []) {
+        const assetName = decodeURIComponent(b.url.split("/").pop());
+        const source = assets.get(assetName);
+        b.url = `${base}/files/${encodeURIComponent(assetName)}`;
+        if (source) blobs.set(`/files/${encodeURIComponent(assetName)}`, fs.readFileSync(source));
+        else missing++;
+    }
+
     const server = createTestServer({ manifest, blobs, signer });
+    if (latencyMs > 0) server.state.faults.latencyMs = latencyMs;
 
     if (cutAfter > 0) for (const key of blobs.keys()) server.state.faults.cutAfter[key] = cutAfter;
     if (speedKb > 0) server.state.faults.throttleBytesPerSec = speedKb * 1024;
@@ -171,13 +195,13 @@ if (require.main === module) {
     const opt = (name) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : undefined; };
 
     if (!dir) {
-        console.error("Usage : node tools/test-server.js <dossier publish-out> [--port 8787] [--cut-after octets] [--speed Ko/s] [--sign-key clé-de-TEST.key.json (mot de passe : COBBLEREALM_KEY_PASSPHRASE)]");
+        console.error("Usage : node tools/test-server.js <dossier publish-out> [--port 8787] [--cut-after octets] [--speed Ko/s] [--latency ms] [--sign-key clé-de-TEST.key.json (mot de passe : COBBLEREALM_KEY_PASSPHRASE)]");
         process.exit(2);
     }
 
     const port = Number(opt("port") || 8787);
 
-    serveFolder(path.resolve(dir), { port, cutAfter: Number(opt("cut-after") || 0), speedKb: Number(opt("speed") || 0), signKey: opt("sign-key") }).then(async ({ server, base, missing }) => {
+    serveFolder(path.resolve(dir), { port, cutAfter: Number(opt("cut-after") || 0), speedKb: Number(opt("speed") || 0), signKey: opt("sign-key"), latencyMs: Number(opt("latency") || 0) }).then(async ({ server, base, missing }) => {
         await server.listen(port);
         console.log(`Serveur de test : ${base}/manifest.json`);
         if (missing) console.warn(`Attention : ${missing} fichier(s) du manifest absents des dossiers release-*`);

@@ -49,7 +49,7 @@ const tests = [];
 const test = (name, fn) => tests.push({ name, fn });
 
 const build = (sourceDir, version, manifestsDir, extra = {}) =>
-    publish.buildManifest({ sourceDir, policy, version, manifestsDir, ...extra });
+    publish.buildManifest({ sourceDir, policy, version, manifestsDir, bundles: false, ...extra });
 
 /* ---------------- chemins et motifs ---------------- */
 
@@ -110,7 +110,7 @@ test("Manifest v2 : contenu, catégories, préservés non publiés", async () =>
     assert.ok(warnings.some((w) => w.includes("inconnu.bin")), "avertissement fichier sans règle");
 
     const url = byPath["mods/alpha.jar"].url;
-    assert.ok(url.startsWith("https://github.com/cyrian290606/CobbleRealm-Pack/releases/download/pack-1.0.0/"));
+    assert.ok(url.startsWith("https://github.com/cyrian290606/CobbleRealm-Pack/releases/download/pack-files-1/"));
     assert.ok(url.endsWith(`${sha("alpha-v1")}.jar`));
     assert.strictEqual(newAssets.length, 8);
     assert.deepStrictEqual(publish.validateManifest(manifest), []);
@@ -152,11 +152,11 @@ test("Mise à jour : seuls les fichiers modifiés/ajoutés sont à envoyer", asy
 
     assert.deepStrictEqual(v2.newAssets.map((a) => a.assetName).sort(),
         [`${sha("alpha-v2")}.jar`, `${sha("gamma-v1")}.jar`].sort());
-    assert.ok(v2.newAssets.every((a) => a.tag === "pack-1.1.0"));
+    assert.ok(v2.newAssets.every((a) => a.tag === "pack-files-1"), "la release ouverte reçoit les nouveaux fichiers");
 
     // un fichier inchangé garde l'URL de la version 1.0.0
     const options = v2.manifest.files.find((f) => f.path === "options.txt");
-    assert.ok(options.url.includes("/pack-1.0.0/"));
+    assert.ok(options.url.includes("/pack-files-1/"));
 
     const changes = publish.summarizeChanges(v1.manifest, v2.manifest);
     assert.deepStrictEqual([changes.added, changes.changed, changes.removed], [1, 1, 1]);
@@ -171,16 +171,16 @@ test("Mise à jour : seuls les fichiers modifiés/ajoutés sont à envoyer", asy
 test("Plus de 900 fichiers : répartition en plusieurs releases", async () => {
     const small = { ...policy, hosting: { ...policy.hosting, maxAssetsPerRelease: 2 } };
     const result = await publish.buildManifest({
-        sourceDir: makeSource("src-chunk"), policy: small, version: "2.0.0", manifestsDir: path.join(tmp, "m-vide")
+        sourceDir: makeSource("src-chunk"), policy: small, version: "2.0.0", manifestsDir: path.join(tmp, "m-vide"), bundles: false
     });
     const tags = [...new Set(result.newAssets.map((a) => a.tag))];
-    assert.deepStrictEqual(tags, ["pack-2.0.0", "pack-2.0.0-2", "pack-2.0.0-3", "pack-2.0.0-4"]);
+    assert.deepStrictEqual(tags, ["pack-files-1", "pack-files-2", "pack-files-3", "pack-files-4"]);
     assert.ok(result.newAssets.every((a) => result.newAssets.filter((b) => b.tag === a.tag).length <= 2));
 });
 
 test("Canal beta : tags dédiés", async () => {
     const r = await build(makeSource("src-beta"), "3.0.0", path.join(tmp, "m-vide"), { channel: "beta" });
-    assert.ok(r.newAssets.every((a) => a.tag === "pack-beta-3.0.0"));
+    assert.ok(r.newAssets.every((a) => a.tag === "pack-beta-files-1"));
 });
 
 /* ---------------- validation ---------------- */
@@ -235,19 +235,19 @@ test("CLI : publication, archive, 2e version, refus d'une version modifiée", ()
     const src = makeSource("src-cli");
     const out = path.join(tmp, "sortie");
 
-    let r = cli(src, "--version", "1.0.0", "--out", out);
+    let r = cli(src, "--version", "1.0.0", "--out", out, "--no-bundles");
     assert.strictEqual(r.status, 0, r.stdout + r.stderr);
     assert.ok(fs.existsSync(path.join(out, "docs", "manifest.json")));
     assert.ok(fs.existsSync(path.join(out, "UPLOAD.md")));
-    assert.strictEqual(fs.readdirSync(path.join(out, "release-pack-1.0.0")).length, 8);
+    assert.strictEqual(fs.readdirSync(path.join(out, "release-pack-files-1")).length, 8);
     assert.ok(fs.existsSync(path.join(root, "manifests", "manifest-1.0.0.json")), "manifest archivé");
     assert.ok(!fs.existsSync(path.join(src, "docs")), "le dossier source n'est pas modifié");
 
     // 2e version : un mod modifié
     const src2 = makeSource("src-cli2", { "mods/alpha.jar": "alpha-v2" });
-    r = cli(src2, "--version", "1.1.0", "--out", out);
+    r = cli(src2, "--version", "1.1.0", "--out", out, "--no-bundles");
     assert.strictEqual(r.status, 0, r.stdout + r.stderr);
-    assert.strictEqual(fs.readdirSync(path.join(out, "release-pack-1.1.0")).length, 1);
+    assert.strictEqual(fs.readdirSync(path.join(out, "release-pack-files-1")).length, 1);
     assert.ok(/Un joueur à jour téléchargera/.test(r.stdout));
     assert.ok(fs.existsSync(path.join(root, "manifests", "manifest-1.0.0.json")), "ancien manifest conservé");
 

@@ -30,6 +30,8 @@ const ALLOWED_URL_HOSTS = ["github.com"];
 /* Mêmes règles que le launcher : une seule définition (updater/manifest.js). */
 const { validateRelPath } = require("../updater/manifest.js");
 const { normalizedPropertiesHash, NORMALIZABLE, NORMALIZABLE_MAX_BYTES } = require("../updater/util.js");
+const { buildBundle, sha256: sha256Of } = require("../updater/bundle.js");
+const { planBundles, DEFAULTS: BUNDLE_DEFAULTS } = require("./bundling.js");
 
 function globToRegExp(pattern) {
 
@@ -236,46 +238,107 @@ async function buildManifest(options) {
 
     /* 3. Fichiers déjà en ligne (versions archivées) */
     const archives = loadArchivedManifests(manifestsDir);
+    const assetUrls = (manifest) => [...manifest.files.filter((f) => f.url).map((f) => f.url), ...(manifest.bundles || []).map((b) => b.url)];
+    const nameOfUrl = (url) => decodeURIComponent(url.split("/").pop());
     const knownUrls = new Map();
 
     if (reuse) {
         for (const { manifest } of archives) {
-            for (const f of manifest.files) {
-                knownUrls.set(decodeURIComponent(f.url.split("/").pop()), f.url);
-            }
+            for (const url of assetUrls(manifest)) knownUrls.set(nameOfUrl(url), url);
         }
     }
 
-    /* 4. Répartition des nouveaux fichiers dans des releases (max 900 chacune) */
+    /* 4. Bundles : les petits fichiers sont regroupés en lots (tools/bundling.js, updater/bundle.js) */
+    const smallLimit = options.smallFileBytes === undefined ? BUNDLE_DEFAULTS.smallBytes : options.smallFileBytes;
+    const bundleOf = new Map();           // sha256 d'un contenu -> id du bundle
+    const bundles = [];                   // { id, size, assetName, data }
+
+    if (options.bundles !== false) {
+
+        const contents = new Map();
+
+        for (const file of hashed) {
+            if (file.size > smallLimit) continue;
+            const c = contents.get(file.sha256) || { sha256: file.sha256, size: file.size, paths: [], abs: file.abs };
+            c.paths.push(file.rel);
+            contents.set(file.sha256, c);
+        }
+
+        for (const planned of planBundles([...contents.values()], { ...options.bundleOptions, smallBytes: smallLimit })) {
+
+            const entries = planned.shas.map((sha) => {
+                const c = contents.get(sha);
+                const data = fs.readFileSync(c.abs);
+                if (data.length !== c.size || sha256Of(data) !== sha) throw new Error(`${c.paths[0]} a changé pendant la préparation : relance la publication`);
+                return { sha256: sha, data };
+            });
+
+            const data = buildBundle(entries);
+            const id = sha256Of(data);
+
+            bundles.push({ id, size: data.length, assetName: `${id}.crb`, data });
+            for (const sha of planned.shas) bundleOf.set(sha, id);
+        }
+    }
+
+    /* 5. Répartition des NOUVEAUX fichiers dans la release « ouverte » (max 900 fichiers par release GitHub) :
+          on remplit d'abord la dernière release existante, puis on en ouvre une nouvelle. */
     const maxPerRelease = (policy.hosting && policy.hosting.maxAssetsPerRelease) || 900;
-    const tagBase = `${(policy.hosting && policy.hosting.tagPrefix) || "pack-"}${channel === "stable" ? "" : channel + "-"}${version}`;
+    const tagStem = `${(policy.hosting && policy.hosting.tagPrefix) || "pack-"}${channel === "stable" ? "" : channel + "-"}files`;
     const releaseBase = `https://github.com/${policy.hosting.repo}/releases/download`;
 
-    const newAssets = new Map();      // assetName -> { assetName, abs, size, tag }
+    const existingByTag = new Map();      // tag -> Set(nom de fichier)
+
+    for (const { manifest } of archives) {
+        for (const url of assetUrls(manifest)) {
+            const m = new RegExp(`/releases/download/(${tagStem}-\\d+)/([^/]+)$`).exec(url);
+            if (!m) continue;
+            if (!existingByTag.has(m[1])) existingByTag.set(m[1], new Set());
+            existingByTag.get(m[1]).add(decodeURIComponent(m[2]));
+        }
+    }
+
+    let openIndex = Math.max(1, ...[...existingByTag.keys()].map((t) => Number(t.slice(tagStem.length + 1))));
+    const countIn = (tag) => (existingByTag.get(tag) ? existingByTag.get(tag).size : 0) + [...newAssetsByTag(tag)].length;
+    const newAssets = new Map();          // nom de fichier -> { assetName, abs | data, size, tag }
+
+    function newAssetsByTag(tag) { return [...newAssets.values()].filter((a) => a.tag === tag); }
+
+    const addAsset = (assetName, source, size) => {
+
+        let asset = newAssets.get(assetName);
+
+        if (!asset) {
+            while (countIn(`${tagStem}-${openIndex}`) >= maxPerRelease) openIndex++;
+            asset = { assetName, ...source, size, tag: `${tagStem}-${openIndex}` };
+            newAssets.set(assetName, asset);
+        }
+
+        return `${releaseBase}/${asset.tag}/${encodeURIComponent(assetName)}`;
+    };
+
+    const bundleEntries = [];
+
+    for (const bundle of bundles.sort((a, b) => (a.id < b.id ? -1 : 1))) {
+        const url = knownUrls.get(bundle.assetName) || addAsset(bundle.assetName, { data: bundle.data }, bundle.size);
+        bundleEntries.push({ id: bundle.id, size: bundle.size, url });
+    }
+
     const files = [];
 
     for (const file of hashed) {
 
-        const assetName = assetNameFor(file.sha256, file.rel);
-        let url = knownUrls.get(assetName);
+        const nsha = file.nsha256 ? { nsha256: file.nsha256 } : {};
 
-        if (!url) {
-
-            let asset = newAssets.get(assetName);
-
-            if (!asset) {
-                const index = Math.floor(newAssets.size / maxPerRelease);
-                asset = {
-                    assetName, abs: file.abs, size: file.size,
-                    tag: index === 0 ? tagBase : `${tagBase}-${index + 1}`
-                };
-                newAssets.set(assetName, asset);
-            }
-
-            url = `${releaseBase}/${asset.tag}/${encodeURIComponent(assetName)}`;
+        if (bundleOf.has(file.sha256) && file.size <= smallLimit) {
+            files.push({ path: file.rel, size: file.size, sha256: file.sha256, ...nsha, bundle: bundleOf.get(file.sha256), policy: file.policy });
+            continue;
         }
 
-        files.push({ path: file.rel, size: file.size, sha256: file.sha256, ...(file.nsha256 ? { nsha256: file.nsha256 } : {}), url, policy: file.policy });
+        const assetName = assetNameFor(file.sha256, file.rel);
+        const url = knownUrls.get(assetName) || addAsset(assetName, { abs: file.abs }, file.size);
+
+        files.push({ path: file.rel, size: file.size, sha256: file.sha256, ...nsha, url, policy: file.policy });
     }
 
     const manifest = {
@@ -289,13 +352,15 @@ async function buildManifest(options) {
         strictDirs: policy.strictDirs || [],
         remove: policy.remove || [],
         preserved: compiled.filter((r) => r.policy === "preserved").map((r) => r.pattern),
+        ...(bundleEntries.length ? { bundles: bundleEntries } : {}),
         files
     };
 
     return {
         manifest,
         newAssets: [...newAssets.values()],
-        stats: { total: all.length, published: files.length, preserved: preservedCount },
+        stats: { total: all.length, published: files.length, preserved: preservedCount, bundled: files.filter((f) => f.bundle).length, bundles: bundleEntries.length },
+        existingTags: [...existingByTag.keys()],
         warnings,
         archives
     };
@@ -320,6 +385,27 @@ function validateManifest(manifest, { allowEmptyMods = false } = {}) {
         return errors;
     }
 
+    const checkAssetUrl = (label, urlText) => {
+        try {
+            const url = new URL(urlText);
+            if (url.protocol !== "https:") errors.push(`${label} : l'URL doit être en https`);
+            if (!ALLOWED_URL_HOSTS.includes(url.hostname)) errors.push(`${label} : domaine non autorisé (${url.hostname})`);
+            if (!url.pathname.includes("/releases/download/")) errors.push(`${label} : URL hors des GitHub Releases`);
+        } catch {
+            errors.push(`${label} : URL invalide`);
+        }
+    };
+
+    const bundleIds = new Set();
+
+    for (const b of manifest.bundles || []) {
+        if (!/^[0-9a-f]{64}$/.test(b.id || "")) errors.push("bundle : id invalide");
+        if (!Number.isInteger(b.size) || b.size <= 0 || b.size > 64 * 1024 * 1024) errors.push(`bundle ${String(b.id).slice(0, 8)} : taille invalide`);
+        if (bundleIds.has(b.id)) errors.push(`bundle ${String(b.id).slice(0, 8)} : doublon`);
+        bundleIds.add(b.id);
+        checkAssetUrl(`bundle ${String(b.id).slice(0, 8)}`, b.url);
+    }
+
     for (const f of manifest.files) {
 
         const pathError = validateRelPath(f.path);
@@ -334,17 +420,11 @@ function validateManifest(manifest, { allowEmptyMods = false } = {}) {
         if (f.size > MAX_ASSET_BYTES) errors.push(`${f.path} : dépasse 2 Go (limite GitHub)`);
         if (!["managed", "default"].includes(f.policy)) errors.push(`${f.path} : catégorie '${f.policy}' invalide`);
 
-        if (!f.url) errors.push(`${f.path} : URL manquante`);
-        else {
-            try {
-                const url = new URL(f.url);
-                if (url.protocol !== "https:") errors.push(`${f.path} : l'URL doit être en https`);
-                if (!ALLOWED_URL_HOSTS.includes(url.hostname)) errors.push(`${f.path} : domaine non autorisé (${url.hostname})`);
-                if (!url.pathname.includes("/releases/download/")) errors.push(`${f.path} : URL hors des GitHub Releases`);
-            } catch {
-                errors.push(`${f.path} : URL invalide`);
-            }
-        }
+        if (f.bundle !== undefined) {
+            if (!bundleIds.has(f.bundle)) errors.push(`${f.path} : bundle inconnu`);
+            if (f.url !== undefined) errors.push(`${f.path} : un fichier d'un bundle n'a pas d'URL`);
+        } else if (!f.url) errors.push(`${f.path} : URL manquante`);
+        else checkAssetUrl(f.path, f.url);
     }
 
     for (const rel of manifest.remove || []) {
@@ -371,7 +451,7 @@ function validateManifest(manifest, { allowEmptyMods = false } = {}) {
 /* Vérifie que chaque URL répond (GET d'1 octet). Retourne les URL en échec. */
 async function checkUrls(manifest, fetchImpl = fetch) {
 
-    const urls = [...new Set(manifest.files.map((f) => f.url))];
+    const urls = [...new Set([...manifest.files.map((f) => f.url), ...(manifest.bundles || []).map((b) => b.url)].filter(Boolean))];
     const failures = [];
 
     await mapLimit(urls, 6, async (url) => {
@@ -395,12 +475,18 @@ function summarizeChanges(previous, next) {
     const after = new Map(next.files.map((f) => [f.path, f]));
 
     let added = 0, changed = 0, removed = 0, downloadBytes = 0;
+    const bundleSize = new Map((next.bundles || []).map((b) => [b.id, b.size]));
+    const neededBundles = new Set();
+    const need = (f) => { if (f.bundle) neededBundles.add(f.bundle); else downloadBytes += f.size; };
 
     for (const [p, f] of after) {
         const old = before.get(p);
-        if (!old) { added++; downloadBytes += f.size; }
-        else if (old.sha256 !== f.sha256) { changed++; downloadBytes += f.size; }
+        if (!old) { added++; need(f); }
+        else if (old.sha256 !== f.sha256) { changed++; need(f); }
     }
+
+    /* un fichier d'un bundle oblige à télécharger le bundle entier */
+    for (const id of neededBundles) downloadBytes += bundleSize.get(id) || 0;
 
     for (const p of before.keys()) if (!after.has(p)) removed++;
 
@@ -421,7 +507,7 @@ function linkOrCopy(source, destination) {
     fs.copyFileSync(source, destination, fs.constants.COPYFILE_FICLONE);
 }
 
-function writeUploadGuide(outDir, manifest, newAssets, policy, channel) {
+function writeUploadGuide(outDir, manifest, newAssets, policy, channel, existingTags = []) {
 
     const tags = [...new Set(newAssets.map((a) => a.tag))];
     const repo = policy.hosting.repo;
@@ -439,16 +525,26 @@ function writeUploadGuide(outDir, manifest, newAssets, policy, channel) {
         const count = newAssets.filter((a) => a.tag === tag).length;
         const prerelease = channel === "stable" ? "" : " (cocher « pre-release »)";
 
-        text += `### Release \`${tag}\` - ${count} fichier(s)${prerelease}\n\n`;
-        text += `1. https://github.com/${repo}/releases/new\n`;
-        text += `2. Tag : \`${tag}\` (Create new tag on publish) - titre libre.\n`;
-        text += `3. Glisser-déposer TOUT le contenu du dossier \`release-${tag}\` dans la zone « Attach binaries ».\n`;
-        text += "4. Attendre la fin des envois, puis « Publish release ».\n\n";
-        text += "Avec le CLI `gh` (si installé), en PowerShell :\n\n";
-        text += "```powershell\n";
-        text += `gh release create ${tag} --repo ${repo} --title "${tag}" --notes "Modpack ${manifest.version}"` +
-            `${channel === "stable" ? "" : " --prerelease"} (Get-ChildItem "release-${tag}").FullName\n`;
-        text += "```\n\n";
+        const exists = existingTags.includes(tag);
+
+        text += `### Release \`${tag}\` - ${count} fichier(s) à ${exists ? "AJOUTER à la release existante" : "envoyer (nouvelle release)"}${prerelease}\n\n`;
+
+        if (exists) {
+            text += `1. https://github.com/${repo}/releases/tag/${tag} puis « Edit » (crayon).\n`;
+            text += `2. Glisser-déposer TOUT le contenu du dossier \`release-${tag}\` dans « Attach binaries », puis « Update release ». Ne rien supprimer : les anciens fichiers restent utilisés par les joueurs.\n\n`;
+            text += "Avec le CLI `gh`, en PowerShell :\n\n```powershell\n";
+            text += `gh release upload ${tag} --repo ${repo} (Get-ChildItem "release-${tag}").FullName\n`;
+            text += "```\n\n";
+        } else {
+            text += `1. https://github.com/${repo}/releases/new\n`;
+            text += `2. Tag : \`${tag}\` (Create new tag on publish) - titre libre.\n`;
+            text += `3. Glisser-déposer TOUT le contenu du dossier \`release-${tag}\` dans la zone « Attach binaries ».\n`;
+            text += "4. Attendre la fin des envois, puis « Publish release ».\n\n";
+            text += "Avec le CLI `gh` (si installé), en PowerShell :\n\n```powershell\n";
+            text += `gh release create ${tag} --repo ${repo} --title "${tag}" --notes "Fichiers du modpack"` +
+                `${channel === "stable" ? "" : " --prerelease"} (Get-ChildItem "release-${tag}").FullName\n`;
+            text += "```\n\n";
+        }
     }
 
     text += "## Étape 2 - Vérifier que tout est en ligne\n\n";
@@ -524,7 +620,7 @@ async function main(argv) {
     if (!sourceDir || !args.version) {
         console.error("Usage : node tools/publish.js <dossierSource> --version x.y.z " +
             "[--channel beta] [--out publish-out] [--dry-run] [--write-docs] [--check-urls] " +
-            "[--no-reuse] [--allow-empty-mods] [--force] [--sign <clé.key.json>]\n" +
+            "[--no-reuse] [--no-bundles] [--allow-empty-mods] [--force] [--sign <clé.key.json>]\n" +
             "        node tools/publish.js --check <manifest.json | URL>");
         return 2;
     }
@@ -555,6 +651,7 @@ async function main(argv) {
         sourceDir, policy, version: args.version, channel,
         manifestsDir: path.join(REPO_ROOT, "manifests"),
         reuse: !args["no-reuse"],
+        bundles: !args["no-bundles"],
         minecraft: args.minecraft, fabricLoader: args["fabric-loader"],
         java: args.java, recommendedRamGb: args.ram,
         onProgress: (n, total) => { if (n % 25 === 0 || n === total) process.stdout.write(`\r  hash ${n}/${total}`); }
@@ -594,6 +691,7 @@ async function main(argv) {
           `Un joueur à jour téléchargera ${mb(changes.downloadBytes)}.`
         : `Première publication : un joueur sans installation téléchargera ${mb(changes.downloadBytes)}.`);
     console.log(`Nouveaux fichiers à envoyer : ${newAssets.length} (${mb(newAssets.reduce((s, a) => s + a.size, 0))}).`);
+    if (stats.bundles) console.log(`Petits fichiers : ${stats.bundled} regroupés dans ${stats.bundles} bundle(s) ; ${stats.published - stats.bundled} fichier(s) individuel(s).`);
     for (const w of warnings) console.warn(`Attention : ${w}`);
 
     if (args["dry-run"]) { console.log("Simulation (--dry-run) : rien n'a été écrit."); return 0; }
@@ -617,9 +715,13 @@ async function main(argv) {
         console.warn("ATTENTION : manifest NON signé (--sign <clé>). Les launchers refuseront de l'utiliser.");
     }
 
-    for (const asset of newAssets) linkOrCopy(asset.abs, path.join(outDir, `release-${asset.tag}`, asset.assetName));
+    for (const asset of newAssets) {
+        const target = path.join(outDir, `release-${asset.tag}`, asset.assetName);
+        if (asset.data) { fs.mkdirSync(path.dirname(target), { recursive: true }); fs.writeFileSync(target, asset.data); }
+        else linkOrCopy(asset.abs, target);
+    }
 
-    writeUploadGuide(outDir, manifest, newAssets, policy, channel);
+    writeUploadGuide(outDir, manifest, newAssets, policy, channel, result.existingTags);
 
     fs.mkdirSync(manifestsDir, { recursive: true });
     fs.writeFileSync(path.join(manifestsDir, `manifest-${manifest.version}.json`), manifestText, "utf8");

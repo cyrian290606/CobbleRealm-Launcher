@@ -195,12 +195,35 @@ async function buildPlan({ manifest, gameRoot, lock, repair = false, hashCache =
     const bySha = new Map();
 
     for (const { file } of needsDownload) {
-        const entry = bySha.get(file.sha256) || { sha256: file.sha256, size: file.size, url: file.url, label: path.posix.basename(file.path), paths: [] };
+        const entry = bySha.get(file.sha256) || { sha256: file.sha256, size: file.size, url: file.url, bundleId: file.bundle, label: path.posix.basename(file.path), paths: [] };
         entry.paths.push(file.path);
         bySha.set(file.sha256, entry);
     }
 
     const uniqueDownloads = [...bySha.values()];
+
+    /*
+     * Ce qui passe réellement par le réseau : les fichiers individuels + les bundles qui contiennent au moins un
+     * fichier nécessaire. (Les fichiers d'un bundle sont ensuite extraits un par un, vérifiés, dans .staging/.)
+     */
+    const bundleInfo = new Map((manifest.bundles || []).map((b) => [b.id, b]));
+    const bundleNeeds = new Map();
+    const directDownloads = [];
+
+    for (const item of uniqueDownloads) {
+
+        if (!item.bundleId) { directDownloads.push(item); continue; }
+
+        const info = bundleInfo.get(item.bundleId);
+        if (!info) throw new UpdateError("MANIFEST_INVALID", "La liste de mise à jour reçue est invalide. Préviens l'équipe CobbleRealm si le problème continue.", { details: "bundle inconnu" });
+
+        const need = bundleNeeds.get(info.id) || { sha256: info.id, size: info.size, url: info.url, label: `lot de petits fichiers ${info.id.slice(0, 8)}`, contents: [] };
+        need.contents.push({ sha256: item.sha256, size: item.size });
+        bundleNeeds.set(info.id, need);
+    }
+
+    const bundles = [...bundleNeeds.values()].map((b) => ({ ...b, fileCount: b.contents.length }));
+    const networkItems = [...bundles, ...directDownloads];
 
     /* Journal de diagnostic : un élément par fichier à (re)télécharger, avec la raison. */
     const diagnostic = needsDownload.map((n) => ({
@@ -211,13 +234,16 @@ async function buildPlan({ manifest, gameRoot, lock, repair = false, hashCache =
     return {
         needsDownload,
         uniqueDownloads,
+        directDownloads,
+        bundles,
+        networkItems,
         diagnostic,
         adopted,
         unchanged,
         toRemove,
         strictRemovals,
         explicitRemovals,
-        bytesToDownload: uniqueDownloads.reduce((sum, d) => sum + d.size, 0),
+        bytesToDownload: networkItems.reduce((sum, d) => sum + d.size, 0),
         isEmpty: needsDownload.length === 0 && toRemove.length === 0 &&
             strictRemovals.length === 0 && explicitRemovals.length === 0
     };
