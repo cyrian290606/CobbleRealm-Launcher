@@ -243,6 +243,14 @@ contextBridge.exposeInMainWorld(
                 "get-app-info"
             ),
 
+        /* Tests uniquement : sans effet dans l'application installée (aucun gestionnaire côté principal) */
+        devResizeWindow: (width, height) =>
+            ipcRenderer.invoke(
+                "dev-resize-window",
+                width,
+                height
+            ),
+
         /* Annule le téléchargement en cours (les fichiers déjà reçus sont conservés) */
         cancelUpdate: () =>
             ipcRenderer.invoke(

@@ -15,7 +15,7 @@ const path = require("path");
 const crypto = require("crypto");
 const { request } = require("./http");
 const { FILE_HOSTS } = require("./manifest");
-const { mapLimit, sleep } = require("./util");
+const { mapLimit, sleep, renameRetry } = require("./util");
 const { UpdateError, toUpdateError, corruptError, diskFullError, missingRemoteError } = require("./errors");
 
 function freeSpaceBytes(dir) {
@@ -168,7 +168,7 @@ async function downloadOne(item, ctx) {
                 throw Object.assign(new Error("hash différent"), { corrupt: true });
             }
 
-            await fsp.rename(partPath, finalPath);
+            await renameRetry(partPath, finalPath);
             progress.finish(item.label);
             return;
 

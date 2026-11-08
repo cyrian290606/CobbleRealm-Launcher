@@ -451,6 +451,39 @@ const MEASURE = `(() => {
   check("fenêtre « Lire la suite » : Tab garde le focus dans la fenêtre, Échap la ferme", trapped === "newsModalClose" && !(await ev("document.getElementById('newsModal').classList.contains('show')")), trapped);
   await size(1200, 700);
 
+  /* ---- Groupe 8 : zoom automatique, mesuré sur la VRAIE fenêtre (pas une simulation) ---- */
+  await send("Emulation.clearDeviceMetricsOverride");
+  const autoZoom = (cw, ch) => Math.max(1, Math.min(1.5, Math.floor(Math.min(cw / 1280, ch / 760) * 20) / 20));
+
+  const realSize = async (w, h) => {
+    const r = await ev(`window.cobbleRealm.devResizeWindow(${w}, ${h})`);
+    await sleep(700);
+    const m = await ev("({ iw: innerWidth, ih: innerHeight, dpr: devicePixelRatio })");
+    return { ...m, content: r.size };
+  };
+
+  const base = await realSize(1184, 661);                       // contenu de la fenêtre par défaut
+  check("vraie fenêtre par défaut (contenu 1184×661) : interface à 100 %", Math.abs(base.iw - 1184) <= 1 && Math.abs(base.ih - 661) <= 1, JSON.stringify(base));
+  const zoomOf = (m) => m.dpr / base.dpr;
+
+  for (const [w, h] of [[1366, 728], [1600, 880], [1920, 1080], [2560, 1380]]) {
+    const m = await realSize(w, h);
+    const expected = autoZoom(w, h);
+    const layout = await ev(MEASURE);
+    check(`vraie fenêtre, contenu ${w}×${h} : zoom automatique ${expected} (obtenu ${zoomOf(m).toFixed(2)}), zone d'affichage ${m.iw}×${m.ih}, mise en page sans défaut`,
+      Math.abs(zoomOf(m) - expected) < 0.01 && layout.issues.length === 0 && Math.abs(m.iw * expected - w) < 2, JSON.stringify(layout.issues));
+    if (w === 1920) await shot("g8-vraie-fenetre-1920x1080.png");
+    if (w === 2560) await shot("g8-vraie-fenetre-2560x1380.png");
+  }
+
+  /* réglage manuel : prioritaire, puis retour à l'automatique */
+  await ev("window.cobbleRealm.saveLauncherSettings({ uiScale: 1.25 })"); await sleep(500);
+  const manual = zoomOf({ dpr: await ev("devicePixelRatio") });
+  await ev("window.cobbleRealm.saveLauncherSettings({ uiScale: 'auto' })"); await sleep(500);
+  const back = zoomOf({ dpr: await ev("devicePixelRatio") });
+  check("réglage « taille de l'interface » : 125 % appliqué tout de suite, puis retour à l'automatique", Math.abs(manual - 1.25) < 0.01 && Math.abs(back - 1.5) < 0.01, `manuel ${manual.toFixed(2)}, auto ${back.toFixed(2)}`);
+  await realSize(1184, 661);
+
   /* Aucune erreur dans la page */
   const problems = events.filter((e) => e.method === "Runtime.exceptionThrown" || (e.method === "Log.entryAdded" && e.params.entry.level === "error" && !/Failed to load resource|ERR_CONNECTION/.test(e.params.entry.text)));
   check("aucune erreur CSP / exception dans la page", problems.length === 0, JSON.stringify(problems.slice(0, 2).map((p) => p.params.entry ? p.params.entry.text : p.params.exceptionDetails.text)));

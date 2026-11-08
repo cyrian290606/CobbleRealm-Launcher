@@ -33,6 +33,8 @@ Ce fichier présente, version après version, ce qui change pour les joueurs.
 - Tu es maintenant prévenu si Minecraft s'arrête à cause d'une erreur.
 - Le bouton JOUER indique clairement l'état : « METTRE À JOUR ET JOUER » quand une mise à jour est disponible, « EN JEU » quand Minecraft est lancé, avec un indicateur de chargement animé à la place de l'ancien sablier.
 - Les textes du bouton JOUER s'adaptent à sa taille : plus de message coupé, même sur une petite fenêtre.
+- L'interface s'adapte automatiquement aux grands écrans : textes, boutons et fenêtres grandissent avec la taille de la fenêtre, sans changer l'apparence du launcher.
+- Les plus petits textes (pastilles, détails, indications) sont un peu plus grands pour être plus faciles à lire.
 - Les versions affichées (launcher, Minecraft, Fabric et modpack) sont celles réellement installées sur ton ordinateur.
 - Pendant le chargement, l'annonce affiche un cadre d'attente ; sans Internet, la dernière annonce connue s'affiche.
 - La zone de téléchargement est plus claire : pourcentage, temps restant, fichier en cours, nombre de fichiers, volume et vitesse.
@@ -46,6 +48,7 @@ Ce fichier présente, version après version, ce qui change pour les joueurs.
 
 ### Corrections
 - Sur les petites fenêtres, le titre CobbleRealm n'est plus coupé et l'annonce ne recouvre plus le bouton JOUER.
+- L'installation de Java ou d'un mod pouvait échouer à cause de l'antivirus Windows, qui bloque parfois un fichier pendant un instant : le launcher réessaie maintenant automatiquement.
 - L'indicateur « Serveur EN LIGNE » s'affichait toujours, même quand le serveur était éteint : il n'apparaît plus tant que l'état réel du serveur n'est pas connu.
 - Une ancienne annonce (« V4 ») pouvait s'afficher brièvement au démarrage : c'est corrigé.
 - Il n'était pas possible d'annuler une connexion Microsoft en cours : c'est désormais possible à tout moment.

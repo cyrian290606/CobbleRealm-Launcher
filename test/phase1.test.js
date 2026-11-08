@@ -59,6 +59,12 @@ const upd = {
 };
 
 const javaCalls = [];
+const fakeWindows = [];
+const makeFakeWindow = (width, height) => {
+    const win = { zoom: 1, size: [width, height], isDestroyed: () => false, getContentSize: () => win.size, on() {},
+        webContents: { send() {}, isDestroyed: () => false, getZoomFactor: () => win.zoom, setZoomFactor: (f) => { win.zoom = f; }, setVisualZoomLevelLimits: async () => {} } };
+    return win;
+};
 let clipboardText = "";
 let cancelCalls = 0;
 let logoutCalls = 0;
@@ -89,7 +95,7 @@ const fakes = {
             whenReady: () => new Promise(() => {}),
             getPath: (n) => (n === "appData" ? appData : n === "userData" ? userData : tmp)
         },
-        BrowserWindow: class { static getAllWindows() { return []; } },
+        BrowserWindow: class { static getAllWindows() { return fakeWindows; } },
         Menu: { setApplicationMenu() {} },
         ipcMain: { handle: (name, fn) => { ipc[name] = fn; } },
         shell: { openExternal: async (u) => { opened.push(u); } },
@@ -533,6 +539,72 @@ test("Rapport de support : origine inconnue refusée", async () => {
     const r = await ipc["copy-support-report"]({ sender: sender() });
     assert.strictEqual(r.success, false);
     assert.strictEqual(clipboardText, "");
+});
+
+/* ---------- Groupes 8 et 9 : réglages et zoom ---------- */
+
+test("Réglages : valeurs inconnues ou abîmées remplacées par les valeurs par défaut", async () => {
+    reset();
+    const file = path.join(userData, "settings.json");
+    const r = await ipc["save-launcher-settings"](trusted(sender()), { uiScale: 7, onLaunch: "explose", reduceMotion: 5, notifications: "oui" });
+    assert.ok(r.success);
+    assert.deepStrictEqual([r.uiScale, r.onLaunch, r.reduceMotion, r.notifications], ["auto", "keep", "auto", true]);
+
+    // fichier illisible ou contenu hostile : jamais d'erreur, valeurs par défaut
+    for (const content of ["{pas du json", "[]", "null", JSON.stringify({ uiScale: "<script>", onLaunch: { a: 1 }, ram: "beaucoup" })]) {
+        fs.writeFileSync(file, content);
+        const s = await ipc["get-launcher-settings"](trusted(sender()));
+        assert.deepStrictEqual([s.uiScale, s.onLaunch, s.reduceMotion, s.notifications], ["auto", "keep", "auto", true], content);
+        assert.ok(s.ram >= 2 && s.ram <= s.maxRam);
+    }
+    fs.rmSync(file, { force: true });
+});
+
+test("Réglages : valeurs valides conservées, fusion sans perte, origine inconnue refusée", async () => {
+    reset();
+    const file = path.join(userData, "settings.json");
+    fs.rmSync(file, { force: true });
+    await ipc["save-launcher-settings"](trusted(sender()), { ram: 3, uiScale: 1.25, onLaunch: "minimize", reduceMotion: "on", notifications: false });
+    let s = await ipc["get-launcher-settings"](trusted(sender()));
+    assert.deepStrictEqual([s.ram, s.uiScale, s.onLaunch, s.reduceMotion, s.notifications], [Math.min(3, limits.maxRam), 1.25, "minimize", "on", false]);
+
+    // un changement partiel ne perd rien
+    await ipc["save-launcher-settings"](trusted(sender()), { onLaunch: "close" });
+    s = await ipc["get-launcher-settings"](trusted(sender()));
+    assert.deepStrictEqual([s.uiScale, s.onLaunch, s.reduceMotion, s.notifications], [1.25, "close", "on", false]);
+
+    // « 1.25 » écrit sous forme de texte est accepté, une échelle non prévue est refusée
+    await ipc["save-launcher-settings"](trusted(sender()), { uiScale: "1.5" });
+    assert.strictEqual((await ipc["get-launcher-settings"](trusted(sender()))).uiScale, 1.5);
+    await ipc["save-launcher-settings"](trusted(sender()), { uiScale: 3 });
+    assert.strictEqual((await ipc["get-launcher-settings"](trusted(sender()))).uiScale, "auto");
+
+    const refused = await ipc["save-launcher-settings"]({ sender: sender() }, { onLaunch: "keep" });
+    assert.strictEqual(refused.success, false);
+    fs.rmSync(file, { force: true });
+});
+
+test("Zoom automatique : 100 % sur petit écran, grandit avec la fenêtre jusqu'à 150 %, réglage manuel prioritaire", async () => {
+    reset();
+    fs.rmSync(path.join(userData, "settings.json"), { force: true });
+    const cases = [[1184, 661, 1], [1366, 728, 1], [1600, 880, 1.15], [1920, 1080, 1.4], [2560, 1380, 1.5], [3840, 2100, 1.5], [900, 560, 1]];
+    for (const [w, h, expected] of cases) {
+        fakeWindows.length = 0;
+        const win = makeFakeWindow(w, h);
+        fakeWindows.push(win);
+        await ipc["save-launcher-settings"](trusted(sender()), { uiScale: "auto" });
+        assert.strictEqual(win.zoom, expected, `${w}×${h}`);
+    }
+    // réglage manuel : prioritaire, quelle que soit la taille
+    fakeWindows.length = 0;
+    const win = makeFakeWindow(2560, 1380);
+    fakeWindows.push(win);
+    await ipc["save-launcher-settings"](trusted(sender()), { uiScale: 1.1 });
+    assert.strictEqual(win.zoom, 1.1);
+    await ipc["save-launcher-settings"](trusted(sender()), { uiScale: "auto" });
+    assert.strictEqual(win.zoom, 1.5);
+    fakeWindows.length = 0;
+    fs.rmSync(path.join(userData, "settings.json"), { force: true });
 });
 
 /* ---------- Groupe 3 : compte Microsoft ---------- */

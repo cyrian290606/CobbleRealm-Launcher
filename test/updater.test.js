@@ -564,6 +564,54 @@ test("Annulation pendant la vérification des fichiers (migration) : arrêt imm�
     } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
+/* ---------------- robustesse Windows ---------------- */
+
+test("Renommage : réessaie quand Windows verrouille un instant (EPERM), échoue vite sur une vraie erreur", async () => {
+    const { renameRetrySync, renameRetry } = require("../updater/util");
+    const waits = [];
+
+    // 3 refus transitoires puis réussite
+    let calls = 0;
+    const flaky = { renameSync: () => { if (++calls <= 3) throw Object.assign(new Error("EPERM"), { code: "EPERM" }); return "ok"; } };
+    assert.strictEqual(renameRetrySync("a", "b", { fsImpl: flaky, wait: (ms) => waits.push(ms) }), "ok");
+    assert.strictEqual(calls, 4);
+    assert.deepStrictEqual(waits, [50, 100, 200], "délais croissants");
+
+    // un verrouillage qui ne cède jamais : abandon après les essais prévus
+    let always = 0;
+    const stuck = { renameSync: () => { always++; throw Object.assign(new Error("EBUSY"), { code: "EBUSY" }); } };
+    assert.throws(() => renameRetrySync("a", "b", { fsImpl: stuck, wait: () => {} }), (e) => e.code === "EBUSY");
+    assert.strictEqual(always, 8);
+
+    // une erreur qui n'a rien de transitoire n'est jamais retentée
+    let once = 0;
+    const missing = { renameSync: () => { once++; throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); } };
+    assert.throws(() => renameRetrySync("a", "b", { fsImpl: missing, wait: () => { assert.fail("pas d'attente"); } }), (e) => e.code === "ENOENT");
+    assert.strictEqual(once, 1);
+
+    // version asynchrone
+    let n = 0;
+    const flakyAsync = { rename: async () => { if (++n <= 2) throw Object.assign(new Error("EACCES"), { code: "EACCES" }); return "ok"; } };
+    assert.strictEqual(await renameRetry("a", "b", { fsImpl: flakyAsync, delays: [1, 1, 1] }), "ok");
+});
+
+test("Mise à jour : un verrouillage passager (EPERM) pendant l'installation n'échoue plus", () => withEnv(async (env) => {
+    env.publish(V1(), "1.0.0");
+    const realRename = fs.renameSync;
+    let refused = 0;
+    fs.renameSync = function (from, to) {
+        // les 2 premiers renommages d'un fichier du jeu sont refusés, comme par un antivirus
+        if (String(to).includes(path.join(env.root, "mods")) && refused < 2) { refused++; throw Object.assign(new Error("EPERM"), { code: "EPERM" }); }
+        return realRename.apply(this, arguments);
+    };
+    try {
+        const r = await env.updater().sync();
+        assert.ok(r.ok);
+        assert.ok(refused === 2, "le verrouillage a bien été simulé");
+        assert.ok(fs.existsSync(path.join(env.root, "mods/a.jar")) && fs.existsSync(path.join(env.root, "lock.json")));
+    } finally { fs.renameSync = realRename; }
+}));
+
 /* ---------------- exécution ---------------- */
 
 (async () => {

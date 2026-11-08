@@ -12,6 +12,7 @@ const path = require("path");
 const { resolveInside } = require("./manifest");
 const { beginUpdate, commitLock } = require("./lock");
 const { toUpdateError } = require("./errors");
+const { renameRetrySync } = require("./util");
 
 const REMOVED_DIR = ".removed";
 const RETENTION_DAYS = 30;
@@ -31,7 +32,7 @@ function moveToQuarantine(gameRoot, rel, stamp) {
 
     if (fs.existsSync(target)) target = `${target}.${Date.now()}`;
 
-    fs.renameSync(source, target);
+    renameRetrySync(source, target);
 }
 
 /* Supprime de .removed/ les sauvegardes plus vieilles que `days` jours. Rien d'autre n'est touché. */
@@ -92,7 +93,7 @@ function applyPlan({ plan, manifest, gameRoot, stagingDir, hooks = {}, now = Dat
 
             fs.mkdirSync(path.dirname(firstDest), { recursive: true });
             fs.rmSync(firstDest, { force: true });
-            fs.renameSync(staged, firstDest);
+            renameRetrySync(staged, firstDest);
 
             const rec = statRecord(firstDest, first, item.sha256, policyByPath.get(first));
             records[first] = { sha256: rec.sha256, size: rec.size, mtimeMs: rec.mtimeMs, policy: rec.policy };

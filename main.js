@@ -804,6 +804,11 @@ function createWindow() {
 
     mainWindow = win;
 
+    /* Zoom automatique : à l'ouverture, puis à chaque redimensionnement. */
+    win.webContents.on("did-finish-load", () => applyZoom(win));
+    win.on("resize", () => applyZoom(win));
+    win.webContents.setVisualZoomLevelLimits(1, 1).catch(() => {});
+
     /* L'interface ne doit jamais ouvrir de fenêtre ni naviguer ailleurs. */
     win.webContents.setWindowOpenHandler(
         () => ({ action: "deny" })
@@ -1086,47 +1091,87 @@ function getDefaultRam() {
 }
 
 
-function readLauncherSettings() {
+/*
+ * Réglages du launcher (userData/settings.json). Toute valeur est validée à la lecture ET à l'écriture :
+ * une valeur inconnue ou abîmée retombe toujours sur la valeur par défaut.
+ */
+const UI_SCALES = ["auto", 1, 1.1, 1.25, 1.5];
+const ON_LAUNCH_CHOICES = ["keep", "minimize", "close"];
+const MOTION_CHOICES = ["auto", "on", "off"];
+
+const SETTINGS_DEFAULTS = {
+    uiScale: "auto",
+    onLaunch: "keep",
+    reduceMotion: "auto",
+    notifications: true
+};
+
+function normalizeSettings(data) {
+
+    const source = data && typeof data === "object" ? data : {};
+
+    const scale =
+        source.uiScale === "auto"
+            ? "auto"
+            : UI_SCALES.find((value) => value !== "auto" && value === Number(source.uiScale));
+
+    return {
+        uiScale: scale === undefined ? SETTINGS_DEFAULTS.uiScale : scale,
+
+        onLaunch: ON_LAUNCH_CHOICES.includes(source.onLaunch) ? source.onLaunch : SETTINGS_DEFAULTS.onLaunch,
+
+        reduceMotion: MOTION_CHOICES.includes(source.reduceMotion) ? source.reduceMotion : SETTINGS_DEFAULTS.reduceMotion,
+
+        notifications: typeof source.notifications === "boolean" ? source.notifications : SETTINGS_DEFAULTS.notifications
+    };
+}
+
+
+function readSettingsFile() {
 
     try {
 
-        const settingsPath =
-            getSettingsPath();
+        return JSON.parse(fs.readFileSync(getSettingsPath(), "utf8"));
 
-        if (
-            !fs.existsSync(
-                settingsPath
-            )
-        ) {
+    } catch {
 
-            return {
-                ram: getDefaultRam()
-            };
-        }
-
-        const data =
-            JSON.parse(
-                fs.readFileSync(
-                    settingsPath,
-                    "utf8"
-                )
-            );
-
-        return {
-            ram: clampRam(data.ram)
-        };
-
-    } catch (error) {
-
-        console.error(
-            "[CobbleRealm] Erreur lecture paramètres :",
-            error
-        );
-
-        return {
-            ram: getDefaultRam()
-        };
+        return null;
     }
+}
+
+
+function readLauncherSettings() {
+
+    const data = readSettingsFile();
+
+    return {
+        ram: data && data.ram !== undefined ? clampRam(data.ram) : getDefaultRam(),
+        ...normalizeSettings(data)
+    };
+}
+
+
+/* Fusionne les changements demandés avec les réglages actuels, valide, écrit tout. */
+function saveLauncherSettings(changes) {
+
+    const current = readSettingsFile() || {};
+    const asked = changes && typeof changes === "object" ? changes : {};
+
+    const merged = {
+        ...current,
+        ...(asked.ram !== undefined ? { ram: clampRam(asked.ram) } : {}),
+        ...normalizeSettings({ ...current, ...asked })
+    };
+
+    fs.mkdirSync(path.dirname(getSettingsPath()), { recursive: true });
+
+    fs.writeFileSync(
+        getSettingsPath(),
+        JSON.stringify(merged, null, 2),
+        "utf8"
+    );
+
+    return readLauncherSettings();
 }
 
 
@@ -1142,7 +1187,8 @@ handle(
             ...readLauncherSettings(),
             minRam: limits.minRam,
             maxRam: limits.maxRam,
-            defaultRam: getDefaultRam()
+            defaultRam: getDefaultRam(),
+            recommendedRam: Math.min(limits.maxRam, resolveVersions(null).recommendedRamGb)
         };
     }
 );
@@ -1158,27 +1204,14 @@ handle(
 
         try {
 
-            const ram =
-                clampRam(settings.ram);
+            const saved =
+                saveLauncherSettings(settings);
 
-            fs.writeFileSync(
-                getSettingsPath(),
-
-                JSON.stringify(
-                    {
-                        ram:
-                            ram
-                    },
-                    null,
-                    2
-                ),
-
-                "utf8"
-            );
+            applyZoomToAllWindows();
 
             return {
                 success: true,
-                ram: ram
+                ...saved
             };
 
         } catch (error) {
@@ -1196,6 +1229,77 @@ handle(
         }
     }
 );
+
+
+/* ==============================
+   TAILLE DE L'INTERFACE (zoom)
+   Auto : l'interface grandit avec la fenêtre sur les grands écrans (jamais en dessous de 100 %).
+============================== */
+
+/* Réservé aux tests (mode développement explicite) : fixe la taille du CONTENU de la fenêtre. */
+if (DEV_MODE) {
+
+    handle(
+        "dev-resize-window",
+
+        async (event, width, height) => {
+
+            if (!mainWindow || mainWindow.isDestroyed()) {
+                return { success: false };
+            }
+
+            mainWindow.setContentSize(Math.round(Number(width)), Math.round(Number(height)));
+
+            applyZoom(mainWindow);
+
+            return { success: true, size: mainWindow.getContentSize() };
+        }
+    );
+}
+
+function autoZoomFor(width, height) {
+
+    const factor = Math.min(width / 1280, height / 760);
+
+    return Math.max(1, Math.min(1.5, Math.floor(factor * 20) / 20));
+}
+
+function zoomFor(win) {
+
+    const setting = readLauncherSettings().uiScale;
+
+    if (setting !== "auto") {
+        return Number(setting);
+    }
+
+    const [width, height] = win.getContentSize();
+
+    return autoZoomFor(width, height);
+}
+
+function applyZoom(win) {
+
+    if (!win || win.isDestroyed()) {
+        return;
+    }
+
+    try {
+
+        const factor = zoomFor(win);
+
+        if (win.webContents.getZoomFactor() !== factor) {
+            win.webContents.setZoomFactor(factor);
+        }
+
+    } catch { /* le zoom est un confort, jamais bloquant */ }
+}
+
+function applyZoomToAllWindows() {
+
+    for (const win of BrowserWindow.getAllWindows()) {
+        applyZoom(win);
+    }
+}
 
 
 /* ==============================

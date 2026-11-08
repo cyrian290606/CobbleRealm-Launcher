@@ -34,4 +34,42 @@ async function mapLimit(items, limit, fn) {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-module.exports = { hashFile, mapLimit, sleep };
+/*
+ * Renommage résistant : sous Windows, un antivirus ou l'indexation peut verrouiller un fichier ou un dossier
+ * pendant quelques centaines de millisecondes juste après sa création (EPERM / EBUSY / EACCES).
+ * On réessaie quelques fois avant d'abandonner : l'installation n'échoue plus pour si peu.
+ */
+const TRANSIENT = new Set(["EPERM", "EBUSY", "EACCES"]);
+const RETRY_DELAYS_MS = [50, 100, 200, 400, 800, 1200, 1500];
+
+function pause(ms) {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function renameRetrySync(from, to, { fsImpl = fs, delays = RETRY_DELAYS_MS, wait = pause } = {}) {
+
+    for (let attempt = 0; ; attempt++) {
+
+        try {
+            return fsImpl.renameSync(from, to);
+        } catch (error) {
+            if (!TRANSIENT.has(error.code) || attempt >= delays.length) throw error;
+            wait(delays[attempt]);
+        }
+    }
+}
+
+async function renameRetry(from, to, { fsImpl = fs.promises, delays = RETRY_DELAYS_MS } = {}) {
+
+    for (let attempt = 0; ; attempt++) {
+
+        try {
+            return await fsImpl.rename(from, to);
+        } catch (error) {
+            if (!TRANSIENT.has(error.code) || attempt >= delays.length) throw error;
+            await sleep(delays[attempt]);
+        }
+    }
+}
+
+module.exports = { hashFile, mapLimit, sleep, renameRetrySync, renameRetry };

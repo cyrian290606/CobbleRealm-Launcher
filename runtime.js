@@ -15,6 +15,7 @@ const { execFile } = require("child_process");
 const extract = require("extract-zip");
 const { getJson } = require("./updater/http");
 const { downloadAll } = require("./updater/download");
+const { renameRetrySync } = require("./updater/util");
 
 const API_HOST = "api.adoptium.net";
 
@@ -121,7 +122,7 @@ async function downloadRuntime({ runtimeRoot, required, onStatus, apiBase, allow
     if (!info || info.major < required) throw new Error(`Le Java téléchargé ne fonctionne pas (version ${required} attendue).`);
 
     fs.rmSync(finalDir, { recursive: true, force: true });
-    fs.renameSync(extracted, finalDir);
+    renameRetrySync(extracted, finalDir);
     fs.rmSync(tempDir, { recursive: true, force: true });
     fs.rmSync(downloadDir, { recursive: true, force: true });
 }

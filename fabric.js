@@ -8,6 +8,7 @@
 const fs = require("fs");
 const path = require("path");
 const { getJson } = require("./updater/http");
+const { renameRetrySync } = require("./updater/util");
 
 const SAFE_VERSION = /^[\w.\-]+$/;
 
@@ -87,7 +88,7 @@ async function ensureFabricProfile({
 
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(`${file}.tmp`, JSON.stringify(profile, null, 2), "utf8");
-    fs.renameSync(`${file}.tmp`, file);
+    renameRetrySync(`${file}.tmp`, file);
 
     onLog(`[CobbleRealm] Fabric Loader ${fabricLoader} préparé avec succès.`);
 

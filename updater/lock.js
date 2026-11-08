@@ -12,6 +12,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { renameRetrySync } = require("./util");
 
 const LOCK_NAME = "lock.json";
 const PREV_NAME = "lock.prev.json";
@@ -42,7 +43,7 @@ function atomicWrite(file, text) {
 
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(tmp, text, "utf8");
-    fs.renameSync(tmp, file);
+    renameRetrySync(tmp, file);
 }
 
 /* À appeler juste avant de toucher aux fichiers du jeu. */
@@ -51,7 +52,7 @@ function beginUpdate(root) {
     const lockPath = path.join(root, LOCK_NAME);
 
     if (fs.existsSync(lockPath)) {
-        fs.renameSync(lockPath, path.join(root, PREV_NAME));
+        renameRetrySync(lockPath, path.join(root, PREV_NAME));
     }
 }
 
