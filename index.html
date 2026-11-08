@@ -198,7 +198,7 @@
 
         .account-title {
             margin-bottom: 9px;
-            font-size: 16px;
+            font-size: clamp(14px, 1.5vw, 16px);
             font-weight: 800;
 
             /* reste sur une seule ligne, même dans la barre latérale étroite */
@@ -1149,6 +1149,97 @@
         }
 
 /* =========================
+   ERREUR LISIBLE (dans le panneau JOUER)
+========================= */
+
+.play-panel.has-error .launcher-status,
+.play-panel.has-error .server-status {
+    display: none;
+}
+
+.error-box {
+    margin-bottom: 14px;
+    padding: 12px 14px;
+
+    border-radius: 12px;
+
+    background: rgba(90, 10, 22, 0.42);
+    border: 1px solid rgba(255, 120, 130, 0.55);
+}
+
+.error-box[hidden] {
+    display: none;
+}
+
+.error-title {
+    margin-bottom: 5px;
+
+    color: #ffb4bc;
+
+    font-size: 16px;
+    font-weight: 800;
+}
+
+.error-message {
+    color: #eaf0fa;
+
+    font-size: 14px;
+    line-height: 1.45;
+}
+
+.error-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+
+    margin-top: 10px;
+}
+
+.error-button {
+    height: 34px;
+    padding: 0 14px;
+
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+
+    color: white;
+    background: rgba(255, 255, 255, 0.10);
+
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 800;
+
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.error-button:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.error-button.primary {
+    border-color: rgba(99, 231, 255, 0.55);
+    background: rgba(99, 231, 255, 0.2);
+}
+
+.error-button.primary:hover {
+    background: rgba(99, 231, 255, 0.32);
+}
+
+.error-button:focus-visible {
+    outline: 2px solid #63e7ff;
+    outline-offset: 2px;
+}
+
+.error-code {
+    margin-top: 8px;
+
+    color: #9aabc1;
+
+    font-size: 12px;
+}
+
+/* =========================
    ANNONCE : S'ADAPTE À L'ESPACE DISPONIBLE
    (étapes choisies par le script selon la place restante :
     complète -> compacte -> minimale -> simple pastille)
@@ -1455,7 +1546,16 @@
         <section class="update-card" id="updateCard" aria-live="polite"></section>
 
 
-        <section class="play-panel">
+        <section class="play-panel" id="playPanel">
+
+
+            <!-- Erreur lisible : remplace les lignes de statut tant qu'elle est affichée -->
+            <div class="error-box" id="errorBox" hidden role="alert">
+                <div class="error-title" id="errorTitle"></div>
+                <div class="error-message" id="errorText"></div>
+                <div class="error-actions" id="errorActions"></div>
+                <div class="error-code" id="errorCode"></div>
+            </div>
 
 
             <div class="launcher-status">
@@ -1487,15 +1587,6 @@
 
 <!-- Avertissement (hors-ligne) -->
 <div id="updateWarning" hidden style="margin: 4px 0 0 21px; flex: 0 0 calc(100% - 21px); font-size: 13px; color: #ffd37a;"></div>
-
-<!-- Erreur lisible + actions -->
-<div id="updateErrorBox" hidden role="alert" style="margin: 6px 0 0 21px; flex: 0 0 calc(100% - 21px); padding: 10px 12px; border: 1px solid rgba(255,120,120,0.55); border-radius: 10px; background: rgba(90,10,10,0.40); font-size: 13px; line-height: 1.4;">
-    <div id="updateErrorText"></div>
-    <div style="margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap;">
-        <button class="top-button" id="retryButton" style="height: 34px; padding: 0 14px; font-size: 13px; background: rgba(99,231,255,0.20);">Réessayer</button>
-        <button class="top-button" id="repairButton" hidden style="height: 34px; padding: 0 14px; font-size: 13px; background: rgba(255,255,255,0.12);">Réparer l'installation</button>
-    </div>
-</div>
 
 <!-- Mise à jour du launcher lui-même -->
 <div id="selfUpdateBox" hidden style="margin: 6px 0 0 21px; flex: 0 0 calc(100% - 21px); font-size: 13px; color: #9dffb0;">
@@ -2368,10 +2459,12 @@ const updateBarWrap = document.getElementById("updateBarWrap");
 const updateBar = document.getElementById("updateBar");
 const updateDetail = document.getElementById("updateDetail");
 const updateWarning = document.getElementById("updateWarning");
-const updateErrorBox = document.getElementById("updateErrorBox");
-const updateErrorText = document.getElementById("updateErrorText");
-const retryButton = document.getElementById("retryButton");
-const repairButton = document.getElementById("repairButton");
+const playPanel = document.getElementById("playPanel");
+const errorBox = document.getElementById("errorBox");
+const errorTitle = document.getElementById("errorTitle");
+const errorText = document.getElementById("errorText");
+const errorActions = document.getElementById("errorActions");
+const errorCode = document.getElementById("errorCode");
 const selfUpdateBox = document.getElementById("selfUpdateBox");
 const selfUpdateText = document.getElementById("selfUpdateText");
 const selfUpdateButton = document.getElementById("selfUpdateButton");
@@ -2394,7 +2487,7 @@ function resetUpdateUi() {
     updateBarWrap.hidden = true;
     updateBar.style.width = "0%";
     updateDetail.textContent = "";
-    updateErrorBox.hidden = true;
+    hideError();
     updateWarning.hidden = true;
 }
 
@@ -2453,15 +2546,95 @@ if (window.cobbleRealm && window.cobbleRealm.onUpdateProgress) {
     });
 }
 
-if (window.cobbleRealm && window.cobbleRealm.onUpdateError) {
+/*
+ * Erreurs : une seule présentation pour toutes les étapes (mise à jour, connexion, Java, jeu...).
+ * Le message est déjà rédigé pour le joueur par le processus principal ; les boutons dépendent de l'erreur.
+ */
 
-    window.cobbleRealm.onUpdateError((err) => {
+const ERROR_ACTIONS = {
+    retry: {
+        label: "Réessayer",
+        primary: true,
+        run: () => {
+            hideError();
+            playButton.click();
+        }
+    },
+    repair: {
+        label: "Réparer l'installation",
+        run: () => runRepair()
+    },
+    copy: {
+        label: "Copier le rapport",
+        run: async (button) => {
 
-        updateBarWrap.hidden = true;
-        updateErrorText.textContent = (err && err.message) || "Erreur de mise à jour.";
-        repairButton.hidden = !(err && err.canRepair);
-        updateErrorBox.hidden = false;
-        launcherUpdateStatus.textContent = "Mise à jour impossible";
+            const original = button.textContent;
+            let result = null;
+
+            try {
+                result = await window.cobbleRealm.copySupportReport();
+            } catch { /* on affiche l'échec ci-dessous */ }
+
+            button.textContent = result && result.success ? "Rapport copié ✓" : "Copie impossible";
+
+            setTimeout(() => { button.textContent = original; }, 2500);
+        }
+    },
+    help: {
+        label: "Obtenir de l'aide",
+        run: () => window.cobbleRealm.openDiscord()
+    }
+    /* "switchAccount" (Changer de compte) est ajouté avec la gestion du compte */
+};
+
+function hideError() {
+
+    errorBox.hidden = true;
+    playPanel.classList.remove("has-error");
+    errorActions.textContent = "";
+}
+
+function showError(err) {
+
+    const safe = err && typeof err === "object" ? err : {};
+
+    updateBarWrap.hidden = true;
+    updateWarning.hidden = true;
+
+    errorTitle.textContent = safe.title || "Une erreur est survenue";
+    errorText.textContent = safe.message || "Une erreur inattendue est survenue. Réessaie.";
+    errorCode.textContent = safe.code ? "Code : " + safe.code : "";
+
+    errorActions.textContent = "";
+
+    for (const name of Array.isArray(safe.actions) ? safe.actions : ["retry"]) {
+
+        const action = ERROR_ACTIONS[name];
+
+        if (!action) {
+            continue;
+        }
+
+        const button = document.createElement("button");
+        button.className = "error-button" + (action.primary ? " primary" : "");
+        button.textContent = action.label;
+        button.addEventListener("click", () => action.run(button));
+        errorActions.appendChild(button);
+    }
+
+    playPanel.classList.add("has-error");
+    errorBox.hidden = false;
+}
+
+if (window.cobbleRealm && window.cobbleRealm.onLaunchError) {
+
+    window.cobbleRealm.onLaunchError((err) => {
+
+        showError(err);
+
+        /* Le bouton JOUER redevient immédiatement utilisable. */
+        minecraftLaunching = false;
+        setPlayState("JOUER", "▶", false);
     });
 }
 
@@ -2474,15 +2647,9 @@ if (window.cobbleRealm && window.cobbleRealm.onUpdateWarning) {
     });
 }
 
-retryButton.addEventListener("click", () => {
+async function runRepair() {
 
-    updateErrorBox.hidden = true;
-    playButton.click();
-});
-
-repairButton.addEventListener("click", async () => {
-
-    updateErrorBox.hidden = true;
+    hideError();
     minecraftLaunching = true;
     setPlayState("RÉPARATION...", "⏳", true);
 
@@ -2494,21 +2661,24 @@ repairButton.addEventListener("click", async () => {
 
             updateWarning.textContent = "Installation réparée. Tu peux jouer.";
             updateWarning.hidden = false;
-
         }
-        /* En cas d'échec, l'événement update-error réaffiche l'erreur. */
+        /* En cas d'échec, l'événement launch-error réaffiche l'erreur. */
 
     } catch (error) {
 
-        updateErrorText.textContent = "La réparation a échoué. Réessaie.";
-        updateErrorBox.hidden = false;
+        showError({
+            title: "Réparation impossible",
+            message: "La réparation a échoué. Réessaie, ou demande de l'aide.",
+            code: "REPAIR_FAILED",
+            actions: ["retry", "copy", "help"]
+        });
 
     } finally {
 
         minecraftLaunching = false;
         setPlayState("JOUER", "▶", false);
     }
-});
+}
 
 if (window.cobbleRealm && window.cobbleRealm.onLauncherSelfUpdate) {
 
@@ -2558,26 +2728,19 @@ if (
 
             if (data.type === "error") {
 
+                /*
+                 * Le message détaillé est affiché dans la boîte d'erreur (événement launch-error) ;
+                 * le bouton redevient tout de suite utilisable.
+                 */
                 minecraftLaunching = false;
 
                 setPlayState(
-                    "ERREUR",
-                    "⚠",
+                    "JOUER",
+                    "▶",
                     false
                 );
 
                 console.error(data.message);
-
-                setTimeout(
-                    () => {
-                        setPlayState(
-                            "JOUER",
-                            "▶",
-                            false
-                        );
-                    },
-                    2500
-                );
 
                 return;
             }
@@ -2708,40 +2871,16 @@ playButton.addEventListener(
 
             } else {
 
+                /* Le message clair est déjà affiché par la boîte d'erreur (événement launch-error). */
                 console.error(
                     "Erreur lancement Minecraft :",
                     result
                 );
 
-                if (
-                    result &&
-                    result.status === 403
-                ) {
-
-                    setPlayState(
-                        "APPID EN ATTENTE",
-                        "⚠",
-                        false
-                    );
-
-                } else {
-
-                    setPlayState(
-                        "ERREUR",
-                        "⚠",
-                        false
-                    );
-                }
-
-                setTimeout(
-                    () => {
-                        setPlayState(
-                            "JOUER",
-                            "▶",
-                            false
-                        );
-                    },
-                    3000
+                setPlayState(
+                    "JOUER",
+                    "▶",
+                    false
                 );
             }
 
@@ -2752,21 +2891,17 @@ playButton.addEventListener(
                 error
             );
 
-            setPlayState(
-                "ERREUR",
-                "⚠",
-                false
-            );
+            showError({
+                title: "Une erreur est survenue",
+                message: "Le lancement a échoué de façon inattendue. Réessaie, ou copie le rapport et demande de l'aide.",
+                code: "LAUNCH_UNEXPECTED",
+                actions: ["retry", "copy", "help"]
+            });
 
-            setTimeout(
-                () => {
-                    setPlayState(
-                        "JOUER",
-                        "▶",
-                        false
-                    );
-                },
-                3000
+            setPlayState(
+                "JOUER",
+                "▶",
+                false
             );
 
         } finally {

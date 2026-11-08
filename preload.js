@@ -189,10 +189,16 @@ contextBridge.exposeInMainWorld(
             ipcRenderer.on("update-progress", (event, data) => callback(data));
         },
 
-        /* { code, message, canRepair } */
-        onUpdateError: (callback) => {
-            ipcRenderer.on("update-error", (event, data) => callback(data));
+        /* { code, title, message, actions: ["retry","repair","copy","help","switchAccount"], canRepair } */
+        onLaunchError: (callback) => {
+            ipcRenderer.on("launch-error", (event, data) => callback(data));
         },
+
+        /* Copie dans le presse-papiers un rapport de support sans donnée personnelle */
+        copySupportReport: () =>
+            ipcRenderer.invoke(
+                "copy-support-report"
+            ),
 
         /* { message } : lancement hors-ligne sur la version installée */
         onUpdateWarning: (callback) => {

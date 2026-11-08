@@ -99,9 +99,13 @@ const check = (name, ok, detail = "") => { results.push(ok); log(`  ${ok ? "OK  
   server.kill(); await sleep(500);
   const launch = await ev("window.cobbleRealm.launchMinecraft({ ram: 4 })");
   check("lancement refusé quand la mise à jour échoue", launch && launch.success === false && launch.step === "update", JSON.stringify(launch).slice(0, 160));
-  const errVisible = await waitFor("!document.getElementById('updateErrorBox').hidden", 10000);
-  const errText = await ev(text("updateErrorText"));
-  check("message d'erreur lisible en français + bouton Réessayer", Boolean(errVisible) && /Internet/.test(errText) && await ev("!document.getElementById('retryButton').offsetParent === false"), errText);
+  const errVisible = await waitFor("!document.getElementById('errorBox').hidden", 10000);
+  const errText = await ev(text("errorText"));
+  const errTitle = await ev(text("errorTitle"));
+  const buttons = await ev("[...document.querySelectorAll('#errorActions .error-button')].map(b => b.textContent.trim())");
+  check("boîte d'erreur lisible en français : titre, message, 4 boutons", Boolean(errVisible) && errTitle === "Mise à jour impossible" && /Internet/.test(errText) &&
+    JSON.stringify(buttons) === JSON.stringify(["Réessayer", "Copier le rapport", "Obtenir de l'aide"]), errTitle + " | " + errText + " | " + buttons.join(", "));
+  check("le bouton JOUER est immédiatement utilisable (plus de « ERREUR » de 3 secondes)", await ev("!document.getElementById('playButton').disabled && document.getElementById('playText').textContent.trim() === 'JOUER'"));
   check("aucune connexion Microsoft tentée", !/microsoft-device-code/.test(JSON.stringify(events)) );
   await shot("4-erreur.png");
 

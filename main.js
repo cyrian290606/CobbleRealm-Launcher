@@ -3,7 +3,8 @@ const {
     BrowserWindow,
     Menu,
     ipcMain,
-    shell
+    shell,
+    clipboard
 } = require("electron");
 
 const path = require("path");
@@ -29,6 +30,8 @@ const { createUpdater } = require("./updater");
 const { ensureJava } = require("./runtime");
 const { ensureFabricProfile } = require("./fabric");
 const { initLauncherUpdates } = require("./launcherUpdates");
+const { describeError } = require("./playerErrors");
+const { sanitize, buildReport, currentUserNames } = require("./support");
 
 
 /* ==============================
@@ -414,13 +417,94 @@ function describeCheck(check) {
 }
 
 
-function updateErrorPayload(error) {
+/* ==============================
+   ERREURS ET RAPPORT DE SUPPORT
+============================== */
 
-    return {
-        code: error.code || "UNKNOWN",
-        message: redactSecrets(error.message),
-        canRepair: Boolean(error.canRepair)
-    };
+const MAX_LOG_LINES = 300;
+
+const privateStrings = new Set();      // pseudo, e-mail du compte : masqués dans tout rapport
+const recentLogs = [];                 // dernières lignes du journal (sans jeton)
+let lastError = null;                  // { code, message } de la dernière erreur affichée
+
+
+/* Garde une ligne du journal pour le rapport de support (jetons masqués dès l'entrée). */
+function pushLog(text) {
+
+    for (const raw of String(text).split(/\r?\n/)) {
+
+        const line = redactSecrets(raw).trim();
+
+        if (line) {
+            recentLogs.push(line.slice(0, 400));
+        }
+    }
+
+    if (recentLogs.length > MAX_LOG_LINES) {
+        recentLogs.splice(0, recentLogs.length - MAX_LOG_LINES);
+    }
+}
+
+
+function rememberPrivate(...values) {
+
+    for (const value of values) {
+
+        if (typeof value === "string" && value.trim().length >= 3) {
+            privateStrings.add(value.trim());
+        }
+    }
+}
+
+
+/* Message clair pour le joueur : étape + erreur technique -> { code, title, message, actions }. */
+function buildErrorPayload(step, error) {
+
+    const described = describeError({ step, error });
+
+    described.message = sanitize(
+        redactSecrets(described.message),
+        { privateStrings: [...privateStrings], userNames: currentUserNames() }
+    );
+
+    lastError = { code: described.code, message: described.message };
+
+    pushLog(`[Erreur] ${described.code} — ${described.message}`);
+
+    return described;
+}
+
+
+function sendLaunchError(sender, step, error) {
+
+    safeSend(sender, "launch-error", buildErrorPayload(step, error));
+}
+
+
+function broadcastLaunchError(step, error) {
+
+    broadcast("launch-error", buildErrorPayload(step, error));
+}
+
+
+function currentReport() {
+
+    const installed = getUpdater().status();
+    const versions = resolveVersions(null);
+
+    return buildReport({
+        info: {
+            launcher: app.getVersion(),
+            pack: installed.version,
+            minecraft: versions.minecraft,
+            fabric: versions.fabricLoader,
+            java: String(versions.java),
+            ramAllocatedGb: readLauncherSettings().ram
+        },
+        error: lastError,
+        logs: recentLogs,
+        privateStrings: [...privateStrings]
+    });
 }
 
 
@@ -1072,10 +1156,10 @@ handle(
 
         } catch (error) {
 
-            safeSend(
+            sendLaunchError(
                 event.sender,
-                "update-error",
-                updateErrorPayload(error)
+                "update",
+                error
             );
 
             return {
@@ -1087,6 +1171,38 @@ handle(
         } finally {
 
             launchInProgress = false;
+        }
+    }
+);
+
+
+/* ==============================
+   RAPPORT DE SUPPORT
+   (jetons, e-mail, pseudo, identifiants et chemins personnels sont masqués)
+============================== */
+
+handle(
+    "copy-support-report",
+
+    async () => {
+
+        try {
+
+            const report = currentReport();
+
+            clipboard.writeText(report);
+
+            return {
+                success: true,
+                lines: report.split("\n").length
+            };
+
+        } catch (error) {
+
+            return {
+                success: false,
+                error: "Impossible de copier le rapport."
+            };
         }
     }
 );
@@ -1142,11 +1258,29 @@ handle(
         let removeGameListeners = () => {};
         let step = "update";
 
-        const status = (message) => safeSend(
-            event.sender,
-            "minecraft-status",
-            { type: "status", message }
-        );
+        let gameStarted = false;
+
+        const status = (message) => {
+
+            pushLog(`[Launcher] ${message}`);
+
+            safeSend(
+                event.sender,
+                "minecraft-status",
+                { type: "status", message }
+            );
+        };
+
+        const relayLog = (message) => {
+
+            pushLog(message);
+
+            safeSend(
+                event.sender,
+                "minecraft-log",
+                message
+            );
+        };
 
         try {
 
@@ -1204,7 +1338,7 @@ handle(
             const versions =
                 resolveVersions(manifest);
 
-            step = "launch";
+            step = "microsoft";
 
 
             /*
@@ -1230,10 +1364,23 @@ handle(
                 !microsoftResult.accessToken
             ) {
 
-                throw new Error(
-                    "Connexion Microsoft impossible. Reconnecte-toi puis réessaie."
+                const failure = new Error(
+                    microsoftResult && microsoftResult.error
+                        ? redactSecrets(microsoftResult.error)
+                        : "Connexion Microsoft impossible."
                 );
+
+                failure.code = microsoftResult && microsoftResult.code;
+
+                throw failure;
             }
+
+            /* Le compte et le pseudo ne doivent jamais apparaître dans un rapport. */
+            rememberPrivate(
+                microsoftResult.account && microsoftResult.account.username
+            );
+
+            step = "minecraft-auth";
 
 
             /*
@@ -1242,19 +1389,8 @@ handle(
 
             const minecraftResult =
                 await loginMinecraft(
-
                     microsoftResult.accessToken,
-
-                    (
-                        message
-                    ) => {
-
-                        safeSend(
-                            event.sender,
-                            "minecraft-log",
-                            message
-                        );
-                    }
+                    relayLog
                 );
 
             if (
@@ -1264,6 +1400,29 @@ handle(
 
                 launchInProgress = false;
 
+                const authError = {
+                    status:
+                        minecraftResult
+                            ? minecraftResult.status
+                            : null,
+
+                    message:
+                        minecraftResult && minecraftResult.error
+                            ? redactSecrets(minecraftResult.error)
+                            : "Impossible de se connecter à Minecraft Services."
+                };
+
+                const payload =
+                    buildErrorPayload("minecraft-auth", authError);
+
+                safeSend(event.sender, "launch-error", payload);
+
+                safeSend(
+                    event.sender,
+                    "minecraft-status",
+                    { type: "error", message: payload.message }
+                );
+
                 return {
                     success:
                         false,
@@ -1271,16 +1430,14 @@ handle(
                     step:
                         "minecraft-auth",
 
+                    code:
+                        payload.code,
+
                     error:
-                        minecraftResult &&
-                        minecraftResult.error
-                            ? redactSecrets(minecraftResult.error)
-                            : "Impossible de se connecter à Minecraft Services.",
+                        payload.message,
 
                     status:
-                        minecraftResult
-                            ? minecraftResult.status
-                            : null
+                        authError.status
                 };
             }
 
@@ -1296,6 +1453,10 @@ handle(
 
             const profile =
                 minecraftResult.profile;
+
+            rememberPrivate(profile.name, profile.id);
+
+            step = "java";
 
 
             /*
@@ -1318,6 +1479,8 @@ handle(
                 javaPath
             );
 
+            step = "fabric";
+
             status(`Préparation de Fabric ${versions.fabricLoader}...`);
 
             const fabricProfileId =
@@ -1326,12 +1489,10 @@ handle(
                     minecraft: versions.minecraft,
                     fabricLoader: versions.fabricLoader,
                     allowLocal: DEV_MODE,
-                    onLog: (message) => safeSend(
-                        event.sender,
-                        "minecraft-log",
-                        message
-                    )
+                    onLog: relayLog
                 });
+
+            step = "launch";
 
 
             /*
@@ -1420,6 +1581,8 @@ handle(
                         message
                     );
 
+                    pushLog(message);
+
                     safeSend(
                         event.sender,
                         "minecraft-log",
@@ -1439,6 +1602,8 @@ handle(
                         "[Minecraft]",
                         message
                     );
+
+                    pushLog(message);
 
                     safeSend(
                         event.sender,
@@ -1475,6 +1640,19 @@ handle(
                             message: "Minecraft fermé."
                         }
                     );
+
+                    /*
+                     * Arrêt avec une erreur : on prévient le joueur (une fois le jeu réellement démarré :
+                     * un échec de démarrage est signalé plus bas par l'erreur de lancement).
+                     */
+                    if (gameStarted && code !== 0 && code !== null && code !== undefined) {
+
+                        sendLaunchError(
+                            event.sender,
+                            "game-exit",
+                            { exitCode: code }
+                        );
+                    }
 
                     removeGameListeners();
                 };
@@ -1513,6 +1691,8 @@ handle(
                 );
             }
 
+            gameStarted = true;
+
             safeSend(
                 event.sender,
                 "minecraft-status",
@@ -1548,18 +1728,15 @@ handle(
             removeGameListeners();
             launchInProgress = false;
 
-            const message =
-                safeMessage(error, "Erreur de lancement.");
+            /* Message clair + actions (Réessayer, Réparer, Copier le rapport, Aide) selon l'étape qui a échoué. */
+            const payload =
+                buildErrorPayload(step, error);
 
-            if (step === "update") {
-
-                /* La fenêtre d'erreur propose « Réessayer » et « Réparer l'installation ». */
-                safeSend(
-                    event.sender,
-                    "update-error",
-                    updateErrorPayload(error)
-                );
-            }
+            safeSend(
+                event.sender,
+                "launch-error",
+                payload
+            );
 
             safeSend(
                 event.sender,
@@ -1568,7 +1745,8 @@ handle(
                     type:
                         "error",
 
-                    message
+                    message:
+                        payload.message
                 }
             );
 
@@ -1580,10 +1758,10 @@ handle(
                     step,
 
                 code:
-                    error && error.code,
+                    payload.code,
 
                 error:
-                    message
+                    payload.message
             };
         }
     }
@@ -1699,9 +1877,9 @@ app.whenReady().then(
 
         if (check.fatal) {
 
-            broadcast(
-                "update-error",
-                updateErrorPayload(check.error)
+            broadcastLaunchError(
+                "update",
+                check.error
             );
         }
 

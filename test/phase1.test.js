@@ -57,6 +57,10 @@ const upd = {
 };
 
 const javaCalls = [];
+let clipboardText = "";
+let javaFailure = null;
+let fabricFailure = null;
+let mcImpl = null;
 
 /* Connexion Microsoft simulée (remplaçable par un test) */
 const defaultAuth = async (cb) => {
@@ -65,7 +69,7 @@ const defaultAuth = async (cb) => {
         await cb({ userCode: "ABC123", verificationUri: "https://microsoft.com/devicelogin", message: "m" });
         await cb({ userCode: "EVIL", verificationUri: "https://evil.example.com/phish", message: "m" });
     }
-    return { success: true, accessToken: SECRET_MS };
+    return { success: true, accessToken: SECRET_MS, account: { username: "joueur.secret@gmail.com" } };
 };
 let authImpl = defaultAuth;
 const fabricCalls = [];
@@ -74,6 +78,7 @@ const fakes = {
     electron: {
         app: {
             isPackaged: false,
+            getVersion: () => "2.0.0",
             requestSingleInstanceLock: () => true,
             on() {},
             quit() {},
@@ -83,7 +88,8 @@ const fakes = {
         BrowserWindow: class { static getAllWindows() { return []; } },
         Menu: { setApplicationMenu() {} },
         ipcMain: { handle: (name, fn) => { ipc[name] = fn; } },
-        shell: { openExternal: async (u) => { opened.push(u); } }
+        shell: { openExternal: async (u) => { opened.push(u); } },
+        clipboard: { writeText: (t) => { clipboardText = t; } }
     },
     "minecraft-launcher-core": { Client: FakeClient },
     "./auth": {
@@ -92,10 +98,10 @@ const fakes = {
         logoutMicrosoft: async () => ({})
     },
     "./minecraftAuth": {
-        loginMinecraft: async () => ({
+        loginMinecraft: async (...args) => mcImpl ? mcImpl(...args) : ({
             success: true,
             accessToken: SECRET_MC,
-            profile: { id: "uuid-1", name: "Bob" }
+            profile: { id: "3f2b8c1d-9e47-4a6b-8d15-0c7e2a9b4f61", name: "Bob" }
         })
     },
     "./updater": {
@@ -108,10 +114,10 @@ const fakes = {
         })
     },
     "./runtime": {
-        ensureJava: async (opts) => { calls.push("java"); javaCalls.push(opts); return "C:\\java\\bin\\java.exe"; }
+        ensureJava: async (opts) => { calls.push("java"); javaCalls.push(opts); if (javaFailure) throw javaFailure; return "C:\\java\\bin\\java.exe"; }
     },
     "./fabric": {
-        ensureFabricProfile: async (opts) => { calls.push("fabric"); fabricCalls.push(opts); return `fabric-loader-${opts.fabricLoader}-${opts.minecraft}`; }
+        ensureFabricProfile: async (opts) => { calls.push("fabric"); fabricCalls.push(opts); if (fabricFailure) throw fabricFailure; return `fabric-loader-${opts.fabricLoader}-${opts.minecraft}`; }
     }
 };
 
@@ -161,6 +167,7 @@ function reset() {
     calls.length = 0; launchedOptions.length = 0; javaCalls.length = 0; fabricCalls.length = 0; opened.length = 0;
     launchBehavior = "ok";
     authImpl = defaultAuth;
+    mcImpl = null; javaFailure = null; fabricFailure = null; clipboardText = "";
     upd.syncImpl = async () => ({ ok: true, offline: false, version: "10" });
     upd.manifest = { minecraft: "1.21.1", fabricLoader: "0.18.4", java: 21, recommendedRamGb: 6 };
     upd.lock = null;
@@ -304,8 +311,12 @@ test("Mise à jour en échec : le jeu ne démarre JAMAIS, erreur lisible envoyé
     assert.strictEqual(r.success, false);
     assert.strictEqual(r.step, "update");
     assert.deepStrictEqual(calls, ["sync"], "ni authentification, ni Java, ni jeu");
-    const [err] = sentOn(s, "update-error");
-    assert.deepStrictEqual(err, { code: "CORRUPT", message: "Le fichier « a.jar » est resté corrompu après 3 essais.", canRepair: true });
+    const [err] = sentOn(s, "launch-error");
+    assert.deepStrictEqual(err, {
+        code: "CORRUPT", title: "Mise à jour impossible",
+        message: "Le fichier « a.jar » est resté corrompu après 3 essais.",
+        actions: ["retry", "repair", "copy", "help"], canRepair: true
+    });
     assert.deepStrictEqual(counts(), { debug: 0, data: 0, progress: 0, close: 0 });
 
     // « Réessayer » : le lancement redevient possible
@@ -325,7 +336,7 @@ test("Hors-ligne avec installation valide : avertissement puis jeu sur la versio
     assert.ok(r.success);
     const [warning] = sentOn(s, "update-warning");
     assert.ok(/Hors-ligne/.test(warning.message) && warning.message.includes("9.5"));
-    assert.deepStrictEqual(sentOn(s, "update-error"), []);
+    assert.deepStrictEqual(sentOn(s, "launch-error"), []);
     theClient.emit("close", 0);
 });
 
@@ -335,6 +346,187 @@ test("Réparation : lance la réparation de l'updater ; échec signalé à l'int
     const ok = await ipc["repair-installation"](trusted(sender()));
     assert.ok(ok.success);
     assert.strictEqual(upd.repairCalls, 1);
+});
+
+/* ---------- Groupe 2 : erreurs lisibles ---------- */
+
+const launchAndGetError = async (ram = 4) => {
+    const s = sender();
+    const r = await ipc["launch-minecraft"](trusted(s), { ram });
+    const errors = sentOn(s, "launch-error");
+    return { s, r, errors, error: errors[0] };
+};
+
+test("Erreur Microsoft annulée : message simple, seule action « Réessayer », rien d'autre exécuté", async () => {
+    reset();
+    authImpl = async () => { calls.push("auth"); return { success: false, error: "User cancelled the device code flow" }; };
+    const { r, errors, error } = await launchAndGetError();
+    assert.strictEqual(errors.length, 1);
+    assert.strictEqual(error.code, "MICROSOFT_CANCELLED");
+    assert.strictEqual(error.title, "Connexion annulée");
+    assert.deepStrictEqual(error.actions, ["retry"]);
+    assert.strictEqual(r.step, "microsoft");
+    assert.deepStrictEqual(calls, ["sync", "auth"], "ni Java ni jeu");
+    assert.ok(!/device code|cancelled/i.test(error.message), "pas de jargon anglais");
+});
+
+test("Erreur Microsoft générale : pas de détail technique, proposition de changer de compte", async () => {
+    reset();
+    authImpl = async () => { calls.push("auth"); return { success: false, error: "AADSTS70000: interaction_required at https://login.microsoftonline.com/xyz" }; };
+    const { error } = await launchAndGetError();
+    assert.strictEqual(error.code, "MICROSOFT_FAILED");
+    assert.ok(!/AADSTS|https?:|login\./.test(error.message), error.message);
+    assert.ok(error.actions.includes("switchAccount") && error.actions.includes("copy") && error.actions.includes("help"));
+});
+
+test("Compte sans Minecraft Java : message précis, pas de « APPID », action « Changer de compte »", async () => {
+    reset();
+    mcImpl = async () => ({ success: false, status: null, error: "Ce compte ne semble pas posséder Minecraft Java Edition." });
+    const { r, error } = await launchAndGetError();
+    assert.strictEqual(error.code, "NO_MINECRAFT");
+    assert.match(error.message, /ne possède pas Minecraft Java Edition/);
+    assert.strictEqual(error.actions[0], "switchAccount");
+    assert.strictEqual(r.step, "minecraft-auth");
+    assert.deepStrictEqual(calls, ["sync", "auth"]);
+    assert.ok(!/APPID/i.test(JSON.stringify(error)));
+});
+
+test("Services Minecraft : refus (403), trop de tentatives (429), réseau coupé", async () => {
+    reset();
+    mcImpl = async () => ({ success: false, status: 403, error: "Invalid app registration" });
+    let e = (await launchAndGetError()).error;
+    assert.strictEqual(e.code, "MINECRAFT_DENIED");
+    assert.match(e.message, /code 403/);
+    assert.ok(!/APPID|registration/i.test(e.message));
+
+    reset();
+    mcImpl = async () => ({ success: false, status: 429, error: "Too many requests" });
+    e = (await launchAndGetError()).error;
+    assert.strictEqual(e.code, "MINECRAFT_RATE_LIMIT");
+
+    reset();
+    mcImpl = async () => ({ success: false, status: null, error: "fetch failed ENOTFOUND api.minecraftservices.com" });
+    e = (await launchAndGetError()).error;
+    assert.strictEqual(e.code, "OFFLINE");
+    assert.match(e.message, /Internet/);
+    assert.ok(!/ENOTFOUND|api\./.test(e.message));
+});
+
+test("Java ou Fabric indisponible : message en français et jeu non lancé", async () => {
+    reset();
+    javaFailure = new Error("Impossible de télécharger Java 21. Vérifie ta connexion Internet puis réessaie.");
+    let { r, error } = await launchAndGetError();
+    assert.strictEqual(error.code, "JAVA_FAILED");
+    assert.strictEqual(error.title, "Java indisponible");
+    assert.match(error.message, /Java 21/);
+    assert.strictEqual(r.step, "java");
+    assert.ok(!calls.includes("launch") && !calls.includes("fabric"));
+
+    reset();
+    fabricFailure = new Error("TypeError: Cannot read properties of undefined (reading 'x') at C:\\Users\\Marc-Antoine\\app.asar");
+    ({ r, error } = await launchAndGetError());
+    assert.strictEqual(error.code, "FABRIC_FAILED");
+    assert.ok(!/TypeError|Marc-Antoine|asar/.test(error.message), "aucun détail technique ni chemin : " + error.message);
+    assert.strictEqual(r.step, "fabric");
+});
+
+test("Échec de démarrage de Minecraft : « Réparer l'installation » proposé", async () => {
+    reset();
+    launchBehavior = "null";
+    const { error } = await launchAndGetError();
+    assert.strictEqual(error.code, "LAUNCH_FAILED");
+    assert.ok(error.actions.includes("repair") && error.canRepair);
+});
+
+test("Le jeu s'arrête avec une erreur (code ≠ 0) : le joueur est prévenu ; arrêt normal (0) : silence", async () => {
+    reset();
+    let s = sender();
+    await ipc["launch-minecraft"](trusted(s), { ram: 4 });
+    theClient.emit("close", 0);
+    assert.deepStrictEqual(sentOn(s, "launch-error"), [], "fermeture normale");
+
+    reset();
+    s = sender();
+    await ipc["launch-minecraft"](trusted(s), { ram: 4 });
+    theClient.emit("close", 1);
+    const [crash] = sentOn(s, "launch-error");
+    assert.strictEqual(crash.code, "GAME_EXIT");
+    assert.match(crash.message, /code 1/);
+    assert.deepStrictEqual(counts(), { debug: 0, data: 0, progress: 0, close: 0 });
+
+    // échec de démarrage de MCLC (close avec code 1 avant le lancement) : une seule erreur, celle du lancement
+    reset();
+    launchBehavior = "null";
+    s = sender();
+    const original = FakeClient.prototype.launch;
+    FakeClient.prototype.launch = async function (options) { theClient = this; this.emit("close", 1); return null; };
+    await ipc["launch-minecraft"](trusted(s), { ram: 4 });
+    FakeClient.prototype.launch = original;
+    const errors = sentOn(s, "launch-error");
+    assert.strictEqual(errors.length, 1);
+    assert.strictEqual(errors[0].code, "LAUNCH_FAILED");
+});
+
+test("Rapport de support : utile, mais sans jeton, e-mail, pseudo, identifiant ni nom d'utilisateur Windows", async () => {
+    reset();
+    mcImpl = async (token, onLog) => {
+        onLog("[Minecraft] Profil récupéré : Bob");
+        return { success: true, accessToken: SECRET_MC, profile: { id: "3f2b8c1d-9e47-4a6b-8d15-0c7e2a9b4f61", name: "Bob" } };
+    };
+    const userName = os.userInfo().username;
+    const s = sender();
+    await ipc["launch-minecraft"](trusted(s), { ram: 4 });
+    theClient.emit("data", "Setting user: Bob");
+    theClient.emit("data", "Chargement depuis C:\\Users\\" + userName + "\\AppData\\Roaming\\.cobblerealm\\mods");
+    theClient.emit("data", "Compte joueur.secret@gmail.com connecté");
+    theClient.emit("close", 1);
+
+    const r = await ipc["copy-support-report"](trusted(sender()));
+    assert.ok(r.success);
+
+    for (const secret of [SECRET_MC, SECRET_MS, "Bob", "joueur.secret", "3f2b8c1d-9e47", userName]) {
+        assert.ok(!clipboardText.toLowerCase().includes(secret.toLowerCase()), "visible dans le rapport : " + secret);
+    }
+    assert.match(clipboardText, /Launcher : 2\.0\.0/);
+    assert.match(clipboardText, /Minecraft : 1\.21\.1/);
+    assert.match(clipboardText, /Erreur : GAME_EXIT/);
+    assert.match(clipboardText, /--accessToken <secret>/);
+    assert.match(clipboardText, /\.cobblerealm/, "le chemin utile au support reste");
+});
+
+test("Message d'erreur affiché au joueur : jeton, e-mail et chemin personnel masqués même s'ils viennent d'un module", async () => {
+    reset();
+    const userName = os.userInfo().username;
+    upd.syncImpl = async () => {
+        throw Object.assign(
+            new Error(`Fichier verrouillé : C:\\Users\\${userName}\\AppData\\Roaming\\.cobblerealm\\mods\\a.jar (compte joueur.secret@gmail.com, --accessToken ${SECRET_MC})`),
+            { code: "FILE_LOCKED" }
+        );
+    };
+    const { error } = await launchAndGetError();
+    assert.strictEqual(error.code, "FILE_LOCKED");
+    for (const secret of [userName, "joueur.secret", SECRET_MC]) {
+        assert.ok(!error.message.toLowerCase().includes(secret.toLowerCase()), "visible dans le message : " + secret);
+    }
+    assert.match(error.message, /\.cobblerealm/, "le reste du message est conservé");
+});
+
+test("Rapport de support : le pseudo est masqué même quand il apparaît librement dans le journal", async () => {
+    reset();
+    await ipc["launch-minecraft"](trusted(sender()), { ram: 4 });
+    theClient.emit("data", "[Chat] Bob a rejoint la partie");
+    theClient.emit("close", 0);
+    await ipc["copy-support-report"](trusted(sender()));
+    assert.ok(!/bob/i.test(clipboardText), "pseudo visible : " + clipboardText.split("\n").find((l) => /bob/i.test(l)));
+    assert.match(clipboardText, /rejoint la partie/, "le reste de la ligne est conservé");
+});
+
+test("Rapport de support : origine inconnue refusée", async () => {
+    reset();
+    clipboardText = "";
+    const r = await ipc["copy-support-report"]({ sender: sender() });
+    assert.strictEqual(r.success, false);
+    assert.strictEqual(clipboardText, "");
 });
 
 /* ---------- Phase 5 : versions pilotées par le manifest ---------- */

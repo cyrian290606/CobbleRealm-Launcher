@@ -44,6 +44,8 @@ const MEASURE = `(() => {
   if (rect(menu).b > rect(account).y) issues.push('menu chevauche le compte');
   if (c.r > vw || c.b > vh || c.y < 0) issues.push('annonce hors écran');
   if (p.y < 0 || p.b > vh) issues.push('panneau JOUER hors écran');
+  const errBox = document.getElementById('errorBox');
+  if (!errBox.hidden) { const e = errBox.getBoundingClientRect(); if (e.right > p.r + 1 || e.bottom > p.b + 1 || e.y < p.y - 1) issues.push('la boîte d erreur déborde du panneau'); }
   const sideBySide = p.r + 16 > c.x && p.x - 16 < c.r;
   if (sideBySide && c.b + 8 > p.y) issues.push('annonce chevauche le panneau JOUER (' + Math.round(c.b) + ' > ' + Math.round(p.y) + ')');
   if (c.x < t.r && c.r > t.x && c.y < t.b + 8) issues.push('annonce chevauche les boutons du haut');
@@ -83,16 +85,19 @@ const MEASURE = `(() => {
   const scenarios = [
     ["annonce courte", "void 0"],
     ["annonce très longue", `renderNews(${JSON.stringify(LONG_NEWS)})`],
+    ["erreur affichée (4 boutons, message long)", `(() => { document.getElementById("updateBarWrap").hidden = true; showError({ title: "Connexion à Minecraft impossible", message: "Les services Minecraft ont refusé la connexion (code 403). Essaie de te reconnecter avec ton compte, ou demande de laide à léquipe CobbleRealm sur Discord.", code: "MINECRAFT_DENIED", actions: ["switchAccount", "retry", "copy", "help"] }); })()`],
     ["téléchargement en cours", `(() => { document.getElementById('updateBarWrap').hidden = false; document.getElementById('updateBar').style.width = '42%'; document.getElementById('updateDetail').textContent = 'cobblemon-fabric-1.6.1+1.21.1.jar — 38/212 fichiers — 412,3 Mo / 1,92 Go — 18,4 Mo/s'; document.getElementById('launcherUpdateStatus').textContent = 'Téléchargement... 42%'; })()`]
   ];
 
   for (const [label, setup] of scenarios) {
     await ev(setup); await sleep(200);
+    if (label.startsWith("téléchargement")) await ev("hideError()");
     for (const [w, h] of SIZES) {
       await size(w, h); await sleep(150);
       const m = await ev(MEASURE);
       check(`${label} — ${w}×${h}`, m.issues.length === 0, m.issues.length ? m.issues.join(" ; ") : `annonce « ${m.stage} »`);
       if (label === "annonce courte" || (label === "annonce très longue" && w === 900)) await shot(`g1-${label.replace(/ /g, "-")}-${w}x${h}.png`);
+      if (label.startsWith("erreur") && [900, 1184, 1920].includes(w)) await shot(`g2-erreur-${w}x${h}.png`);
     }
   }
 

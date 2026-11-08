@@ -23,10 +23,15 @@ Ce fichier présente, version après version, ce qui change pour les joueurs.
 - Messages d'erreur plus clairs, en français, qui t'expliquent quoi faire.
 - Installation plus légère : le fichier d'installation du launcher est beaucoup plus petit.
 - Sécurité renforcée.
+- Quand une erreur survient, un message clair en français explique ce qui s'est passé, avec des boutons adaptés : Réessayer, Réparer l'installation, Copier le rapport ou Obtenir de l'aide.
+- Le bouton « Copier le rapport » prépare un résumé à envoyer à l'équipe en cas de problème, sans aucune information personnelle (compte, pseudo, mots de passe ou nom de ton ordinateur).
+- Tu es maintenant prévenu si Minecraft s'arrête à cause d'une erreur.
 - L'annonce s'adapte à la taille de ta fenêtre : sur une petite fenêtre, elle se réduit et un bouton « Lire la suite » affiche le texte complet.
 
 ### Corrections
 - Sur les petites fenêtres, le titre CobbleRealm n'est plus coupé et l'annonce ne recouvre plus le bouton JOUER.
+- Un message de développement incompréhensible (« APPID EN ATTENTE ») qui pouvait s'afficher sur le bouton JOUER a été supprimé : il est remplacé par une explication claire.
+- Le bouton JOUER redevient utilisable immédiatement après une erreur, sans attendre quelques secondes.
 - Le code de connexion Microsoft s'affiche maintenant aussi quand il faut te reconnecter au moment de jouer.
 - Les messages de la console ne s'affichent plus en double après plusieurs lancements.
 - Impossible d'ouvrir le launcher plusieurs fois en même temps : la fenêtre déjà ouverte revient au premier plan.
