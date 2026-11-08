@@ -6,6 +6,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Tout développement se fait sur la branche `developpe`.** Ne jamais travailler directement sur `main`, ne jamais fusionner `developpe` dans `main` ni pousser vers `main`/`origin` sans demande explicite de l'utilisateur. `main` est lue par les launchers déployés (manifest.json, news.json) : une erreur dessus touche tous les joueurs. Avant de commencer, vérifier avec `git branch --show-current` qu'on est bien sur `developpe`.
 
+## Règles permanentes
+
+1. **Changelog public (OBLIGATOIRE).** À chaque modification du launcher, mettre à jour [CHANGELOG.md](CHANGELOG.md), organisé par version du launcher (la version de `package.json`), avec trois rubriques : **Nouveautés**, **Améliorations**, **Corrections**.
+   - Il est destiné aux **joueurs** : français simple, uniquement ce qui est visible ou utile pour eux.
+   - **Jamais** de détail technique (noms de fonctions, fichiers, code, protocoles, chemins internes) ni d'information sensible (clés, jetons, adresses internes).
+   - Ne rien inventer : une modification purement interne (refactoring, tests, outils d'administration, documentation) n'a **pas** d'entrée. Dans ce cas, relire le changelog et le dire dans le compte rendu : « aucune entrée publique n'était justifiée ».
+   - Quand la version de `package.json` change, ouvrir une nouvelle section de version en haut du fichier.
+2. **Identité visuelle (OBLIGATOIRE).** Préserver l'identité visuelle actuelle du launcher (couleurs, logo, fond, ambiance, typographie, structure générale). **Demander l'accord de l'utilisateur avant toute modification importante de l'interface** ; proposer d'abord, montrer (description ou capture), puis modifier seulement après validation. Les correctifs mineurs (bug d'affichage, texte, alignement) restent possibles sans demande préalable, mais doivent respecter le style existant.
+3. **Branche** : voir la règle ci-dessus.
+
 ## Project
 
 Launcher Electron (Windows uniquement, UI et logs en français) pour le modpack Minecraft **CobbleRealm** (Cobblemon, Minecraft 1.21.1 + Fabric). Il connecte le joueur via Microsoft, synchronise le modpack fichier par fichier, installe Java si besoin, puis lance le jeu avec `minecraft-launcher-core` (MCLC).
