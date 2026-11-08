@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld(
             callback
         ) => {
 
+            /* data === null : la fenêtre de code doit se fermer */
             ipcRenderer.on(
                 "microsoft-device-code",
 

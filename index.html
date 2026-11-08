@@ -1666,6 +1666,16 @@
 
                 (data) => {
 
+                    /* null = connexion terminée, on ferme la fenêtre */
+                    if (!data) {
+
+                        modal.classList.remove(
+                            "show"
+                        );
+
+                        return;
+                    }
+
                     deviceCode.textContent =
                         data.userCode ||
                         "----";
@@ -1863,6 +1873,36 @@ async function loadRamSetting() {
             settings &&
             settings.ram
         ) {
+
+            /*
+             * Les choix proposés dépendent de la RAM de l'ordinateur
+             * (au moins 2 Go restent réservés à Windows).
+             */
+            const maxRam =
+                Number(settings.maxRam) || 16;
+
+            const choices =
+                [2, 3, 4, 5, 6, 8, 10, 12, 14, 16]
+                    .filter(
+                        (gb) => gb <= maxRam
+                    );
+
+            if (!choices.includes(maxRam)) {
+                choices.push(maxRam);
+            }
+
+            ramSelect.innerHTML = "";
+
+            for (const gb of choices) {
+
+                const option =
+                    document.createElement("option");
+
+                option.value = String(gb);
+                option.textContent = `${gb} Go`;
+
+                ramSelect.appendChild(option);
+            }
 
             ramSelect.value =
                 String(settings.ram);

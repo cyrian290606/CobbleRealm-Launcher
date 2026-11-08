@@ -8,6 +8,7 @@ const {
 
 const path = require("path");
 const fs = require("fs");
+const os = require("os");
 const extract = require("extract-zip");
 
 const {
@@ -32,6 +33,172 @@ const {
 Menu.setApplicationMenu(null);
 
 const launcher = new Client();
+
+let launchInProgress = false;
+
+/* ==============================
+   INSTANCE UNIQUE
+============================== */
+
+const hasSingleInstanceLock =
+    app.requestSingleInstanceLock();
+
+if (!hasSingleInstanceLock) {
+
+    app.quit();
+
+} else {
+
+    app.on("second-instance", () => {
+
+        const win =
+            BrowserWindow.getAllWindows()[0];
+
+        if (win && !win.isDestroyed()) {
+
+            if (win.isMinimized()) {
+                win.restore();
+            }
+
+            win.show();
+            win.focus();
+        }
+    });
+}
+
+
+/* ==============================
+   UTILITAIRES
+============================== */
+
+/*
+ * Masque les secrets (jeton d'accès) dans un texte avant
+ * de l'afficher en console ou de l'envoyer à l'interface.
+ * MCLC écrit toute la ligne de commande Java dans ses
+ * messages "debug", y compris --accessToken.
+ */
+function redactSecrets(text) {
+
+    return String(text)
+        .replace(
+            /(--accessToken\s+)\S+/gi,
+            "$1***"
+        )
+        .replace(
+            /(--(?:session|xuid|clientId)\s+)\S+/gi,
+            "$1***"
+        )
+        .replace(
+            /\beyJ[\w-]+\.[\w-]+\.[\w-]+/g,
+            "***"
+        );
+}
+
+
+/* Envoi sans erreur si la fenêtre a été fermée entre-temps. */
+function safeSend(sender, channel, payload) {
+
+    try {
+
+        if (sender && !sender.isDestroyed()) {
+            sender.send(channel, payload);
+        }
+
+    } catch (error) {
+
+        console.warn(
+            "[CobbleRealm] Envoi IPC impossible :",
+            channel
+        );
+    }
+}
+
+
+/* Callback du code d'appareil Microsoft, vers l'interface. */
+function createDeviceCodeHandler(sender) {
+
+    return async (deviceCode) => {
+
+        safeSend(
+            sender,
+            "microsoft-device-code",
+            deviceCode
+        );
+
+        if (
+            deviceCode &&
+            typeof deviceCode.verificationUri === "string" &&
+            deviceCode.verificationUri.startsWith("https://")
+        ) {
+
+            try {
+                await shell.openExternal(
+                    deviceCode.verificationUri
+                );
+            } catch {}
+        }
+    };
+}
+
+
+/* ==============================
+   MÉMOIRE RAM
+============================== */
+
+const MAX_RAM_GB_HARD_LIMIT = 16;
+const MIN_RAM_GB = 2;
+const RAM_RESERVED_FOR_SYSTEM_GB = 2;
+
+function getRamLimits() {
+
+    const totalGb =
+        os.totalmem() / (1024 ** 3);
+
+    /* On laisse au moins 2 Go à Windows. */
+    const maxRam =
+        Math.max(
+            MIN_RAM_GB,
+            Math.min(
+                MAX_RAM_GB_HARD_LIMIT,
+                Math.floor(totalGb - RAM_RESERVED_FOR_SYSTEM_GB)
+            )
+        );
+
+    /* 6 Go sur une machine à 16 Go ou plus, sinon 4 Go. */
+    const defaultRam =
+        Math.min(
+            maxRam,
+            totalGb >= 16 ? 6 : 4
+        );
+
+    return {
+        minRam: MIN_RAM_GB,
+        maxRam,
+        defaultRam
+    };
+}
+
+
+function clampRam(value) {
+
+    const {
+        minRam,
+        maxRam,
+        defaultRam
+    } = getRamLimits();
+
+    const number =
+        Math.round(Number(value));
+
+    if (!Number.isFinite(number) || number <= 0) {
+        return defaultRam;
+    }
+
+    return Math.max(
+        minRam,
+        Math.min(number, maxRam)
+    );
+}
 
 const COBBLEREALM_MANIFEST_URL =
     "https://raw.githubusercontent.com/cyrian290606/CobbleRealm-Launcher/main/manifest.json";
@@ -117,18 +284,25 @@ function readLocalCobbleRealmVersion() {
 }
 
 
-async function getRemoteCobbleRealmManifest() {
+/*
+ * Le manifest n'est récupéré qu'une fois par session :
+ * le démarrage et l'interface partagent la même requête.
+ * En cas d'échec, rien n'est mis en cache (nouvel essai possible).
+ */
+let remoteManifestPromise = null;
+
+async function fetchRemoteCobbleRealmManifest() {
 
     const manifestUrl =
-    `${COBBLEREALM_MANIFEST_URL}?t=${Date.now()}`;
+        `${COBBLEREALM_MANIFEST_URL}?t=${Date.now()}`;
 
-const response =
-    await fetch(
-        manifestUrl,
-        {
-            cache: "no-store"
-        }
-    );
+    const response =
+        await fetch(
+            manifestUrl,
+            {
+                cache: "no-store"
+            }
+        );
 
     if (!response.ok) {
 
@@ -138,6 +312,22 @@ const response =
     }
 
     return await response.json();
+}
+
+
+function getRemoteCobbleRealmManifest() {
+
+    if (!remoteManifestPromise) {
+
+        remoteManifestPromise =
+            fetchRemoteCobbleRealmManifest()
+                .catch((error) => {
+                    remoteManifestPromise = null;
+                    throw error;
+                });
+    }
+
+    return remoteManifestPromise;
 }
 
 
@@ -1202,26 +1392,7 @@ ipcMain.handle(
 
         const result =
             await loginMicrosoft(
-
-                async (
-                    deviceCode
-                ) => {
-
-                    event.sender.send(
-                        "microsoft-device-code",
-                        deviceCode
-                    );
-
-                    if (
-                        deviceCode &&
-                        deviceCode.verificationUri
-                    ) {
-
-                        await shell.openExternal(
-                            deviceCode.verificationUri
-                        );
-                    }
-                }
+                createDeviceCodeHandler(event.sender)
             );
 
         return result;
@@ -1266,12 +1437,21 @@ ipcMain.handle(
 ipcMain.handle(
     "minecraft-test",
 
-    async () => {
+    async (event) => {
 
         try {
 
             const microsoftResult =
-                await loginMicrosoft();
+                await loginMicrosoft(
+                    createDeviceCodeHandler(event.sender)
+                );
+
+            /* Ferme la fenêtre de code, qu'elle ait servi ou non. */
+            safeSend(
+                event.sender,
+                "microsoft-device-code",
+                null
+            );
 
             if (
                 !microsoftResult ||
@@ -1352,7 +1532,7 @@ function readLauncherSettings() {
         ) {
 
             return {
-                ram: 8
+                ram: getRamLimits().defaultRam
             };
         }
 
@@ -1367,17 +1547,7 @@ function readLauncherSettings() {
 
 
         return {
-            ram:
-                Math.max(
-                    2,
-
-                    Math.min(
-                        Number(
-                            data.ram
-                        ) || 8,
-                        16
-                    )
-                )
+            ram: clampRam(data.ram)
         };
 
     } catch (error) {
@@ -1388,7 +1558,7 @@ function readLauncherSettings() {
         );
 
         return {
-            ram: 8
+            ram: getRamLimits().defaultRam
         };
     }
 }
@@ -1399,7 +1569,15 @@ ipcMain.handle(
 
     async () => {
 
-        return readLauncherSettings();
+        const limits =
+            getRamLimits();
+
+        return {
+            ...readLauncherSettings(),
+            minRam: limits.minRam,
+            maxRam: limits.maxRam,
+            defaultRam: limits.defaultRam
+        };
     }
 );
 
@@ -1415,16 +1593,7 @@ ipcMain.handle(
         try {
 
             const ram =
-                Math.max(
-                    2,
-
-                    Math.min(
-                        Number(
-                            settings.ram
-                        ) || 8,
-                        16
-                    )
-                );
+                clampRam(settings.ram);
 
 
             fs.writeFileSync(
@@ -1957,14 +2126,20 @@ ipcMain.handle(
         launchOptions = {}
     ) => {
 
+        if (launchInProgress) {
+
+            return {
+                success: false,
+                step: "launch",
+                error: "Minecraft est déjà en cours de lancement."
+            };
+        }
+
+        launchInProgress = true;
+
+        let removeGameListeners = () => {};
+
         try {
-
-            console.log(
-                "[TEST RAM] Valeur reçue du launcher :",
-                launchOptions.ram,
-                "Go"
-            );
-
 
             console.log(
                 "[CobbleRealm] Préparation du lancement..."
@@ -1973,10 +2148,20 @@ ipcMain.handle(
 
             /*
              * 1) TOKEN MICROSOFT
+             * (affiche le code d'appareil si la session a expiré)
              */
 
             const microsoftResult =
-                await loginMicrosoft();
+                await loginMicrosoft(
+                    createDeviceCodeHandler(event.sender)
+                );
+
+            /* Ferme la fenêtre de code, qu'elle ait servi ou non. */
+            safeSend(
+                event.sender,
+                "microsoft-device-code",
+                null
+            );
 
 
             if (
@@ -1986,7 +2171,7 @@ ipcMain.handle(
             ) {
 
                 throw new Error(
-                    "Impossible de récupérer la session Microsoft."
+                    "Connexion Microsoft impossible. Reconnecte-toi puis réessaie."
                 );
             }
 
@@ -2004,7 +2189,7 @@ ipcMain.handle(
                         message
                     ) => {
 
-                        event.sender.send(
+                        safeSend(event.sender, 
                             "minecraft-log",
                             message
                         );
@@ -2016,6 +2201,8 @@ ipcMain.handle(
                 !minecraftResult ||
                 !minecraftResult.success
             ) {
+
+                launchInProgress = false;
 
                 return {
                     success:
@@ -2064,7 +2251,7 @@ const javaPath =
     await ensureJava21(
         message => {
 
-            event.sender.send(
+            safeSend(event.sender, 
                 "minecraft-status",
                 {
                     type:
@@ -2090,7 +2277,7 @@ console.log(
             );
 
 
-            event.sender.send(
+            safeSend(event.sender, 
                 "minecraft-status",
                 {
                     type:
@@ -2105,7 +2292,7 @@ console.log(
  * 4) FABRIC LOADER
  */
 
-event.sender.send(
+safeSend(event.sender, 
     "minecraft-status",
     {
         type:
@@ -2123,7 +2310,7 @@ const fabricProfileId =
             message
         ) => {
 
-            event.sender.send(
+            safeSend(event.sender, 
                 "minecraft-log",
                 message
             );
@@ -2182,27 +2369,12 @@ version: {
 memory: {
 
                     max:
-                        `${Math.max(
-                            2,
-                            Math.min(
-                                Number(
-                                    launchOptions.ram
-                                ) || 8,
-                                16
-                            )
-                        )}G`,
+                        `${clampRam(launchOptions.ram)}G`,
 
                     min:
-                        "2G"
+                        `${Math.min(2, clampRam(launchOptions.ram))}G`
                 }
             };
-
-
-            console.log(
-                "[CobbleRealm] RAM reçue :",
-                launchOptions.ram,
-                "Go"
-            );
 
 
             console.log(
@@ -2213,6 +2385,9 @@ memory: {
 
             /*
              * 5) ÉVÉNEMENTS
+             * Les écouteurs sont retirés dès la fermeture du jeu
+             * (ou en cas d'échec) pour ne jamais s'accumuler.
+             * Tout texte est masqué (jeton) avant affichage.
              */
 
             const debugListener =
@@ -2221,16 +2396,15 @@ memory: {
                 ) => {
 
                     const message =
-                        String(
-                            data
-                        );
+                        redactSecrets(data);
 
                     console.log(
                         "[Minecraft DEBUG]",
                         message
                     );
 
-                    event.sender.send(
+                    safeSend(
+                        event.sender,
                         "minecraft-log",
                         message
                     );
@@ -2243,16 +2417,15 @@ memory: {
                 ) => {
 
                     const message =
-                        String(
-                            data
-                        );
+                        redactSecrets(data);
 
                     console.log(
                         "[Minecraft]",
                         message
                     );
 
-                    event.sender.send(
+                    safeSend(
+                        event.sender,
                         "minecraft-log",
                         message
                     );
@@ -2264,63 +2437,57 @@ memory: {
                     progress
                 ) => {
 
-                    event.sender.send(
+                    safeSend(
+                        event.sender,
                         "minecraft-progress",
                         progress
                     );
                 };
 
 
-            launcher.on(
-                "debug",
-                debugListener
-            );
+            const closeListener =
+                (code) => {
+
+                    console.log(
+                        "[CobbleRealm] Minecraft fermé. Code :",
+                        code
+                    );
+
+                    safeSend(
+                        event.sender,
+                        "minecraft-status",
+                        {
+                            type: "closed",
+                            message: "Minecraft fermé."
+                        }
+                    );
+
+                    removeGameListeners();
+                };
 
 
-            launcher.on(
-                "data",
-                dataListener
-            );
+            removeGameListeners = () => {
+
+                launcher.removeListener("debug", debugListener);
+                launcher.removeListener("data", dataListener);
+                launcher.removeListener("progress", progressListener);
+                launcher.removeListener("close", closeListener);
+
+                launchInProgress = false;
+            };
 
 
-            launcher.on(
-                "progress",
-                progressListener
-            );
-
-const closeListener =
-    (code) => {
-
-        console.log(
-            "[CobbleRealm] Minecraft fermé. Code :",
-            code
-        );
-
-        event.sender.send(
-            "minecraft-status",
-            {
-                type: "closed",
-                message: "Minecraft fermé."
-            }
-        );
-
-        launcher.removeListener(
-            "close",
-            closeListener
-        );
-    };
-
-launcher.on(
-    "close",
-    closeListener
-);
+            launcher.on("debug", debugListener);
+            launcher.on("data", dataListener);
+            launcher.on("progress", progressListener);
+            launcher.on("close", closeListener);
 
 
             /*
              * 6) LANCEMENT
              */
 
-            event.sender.send(
+            safeSend(event.sender, 
                 "minecraft-status",
                 {
                     type:
@@ -2332,12 +2499,20 @@ launcher.on(
             );
 
 
-            await launcher.launch(
-                options
-            );
+            const gameProcess =
+                await launcher.launch(
+                    options
+                );
+
+            if (!gameProcess) {
+
+                throw new Error(
+                    "Minecraft n'a pas pu démarrer. Vérifie ton installation puis réessaie."
+                );
+            }
 
 
-            event.sender.send(
+            safeSend(event.sender, 
                 "minecraft-status",
                 {
                     type:
@@ -2366,11 +2541,15 @@ launcher.on(
 
             console.error(
                 "[CobbleRealm] Erreur lancement :",
-                error
+                redactSecrets(error && error.stack ? error.stack : error)
             );
 
+            removeGameListeners();
+            launchInProgress = false;
 
-            event.sender.send(
+
+            safeSend(
+                event.sender,
                 "minecraft-status",
                 {
                     type:
@@ -2498,6 +2677,11 @@ ipcMain.handle(
 
 app.whenReady().then(
     async () => {
+
+        /* Deuxième instance : on laisse la première gérer. */
+        if (!hasSingleInstanceLock) {
+            return;
+        }
 
         /*
          * OUVERTURE IMMÉDIATE DU LAUNCHER
