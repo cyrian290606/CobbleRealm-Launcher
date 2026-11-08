@@ -165,9 +165,12 @@
            COMPTE MICROSOFT
         ========================== */
 
-        .account {
+        .account-wrap {
+            position: relative;
             margin-top: auto;
+        }
 
+        .account {
             padding: 17px;
 
             border-radius: 13px;
@@ -194,6 +197,115 @@
 
             background:
                 rgba(7, 24, 46, 0.84);
+        }
+
+        .account:focus-visible {
+            outline: 2px solid #63e7ff;
+            outline-offset: 2px;
+        }
+
+        /* couleurs selon l'état : gris = non connecté, vert = connecté, ambre = en cours, rouge = erreur */
+        .account[data-state="offline"] .account-status { color: #9aabc1; }
+        .account[data-state="loading"] .account-status { color: #ffd37a; }
+        .account[data-state="error"] .account-status { color: #ff8f98; }
+
+        .account-hint {
+            margin-top: 7px;
+
+            color: #63e7ff;
+
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .account-hint:empty {
+            display: none;
+        }
+
+        .account-menu {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: calc(100% + 8px);
+
+            padding: 8px;
+
+            border-radius: 13px;
+
+            background: rgba(5, 17, 34, 0.97);
+            border: 1px solid rgba(72, 226, 255, 0.40);
+
+            box-shadow:
+                0 0 24px rgba(46, 102, 255, 0.18),
+                0 14px 36px rgba(0, 0, 0, 0.45);
+
+            z-index: 30;
+        }
+
+        .account-menu[hidden] {
+            display: none;
+        }
+
+        .account-menu-user {
+            padding: 6px 8px 8px;
+
+            color: #9aabc1;
+
+            font-size: 13px;
+
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .account-menu-item {
+            display: block;
+
+            width: 100%;
+            padding: 10px;
+
+            border: 0;
+            border-radius: 9px;
+
+            color: #dde5f1;
+            background: transparent;
+
+            font-family: inherit;
+            font-size: 14px;
+            text-align: left;
+
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .account-menu-item:hover:not(:disabled),
+        .account-menu-item:focus-visible {
+            color: white;
+            background: rgba(41, 201, 255, 0.13);
+            outline: none;
+        }
+
+        .account-menu-item:focus-visible {
+            box-shadow: inset 0 0 0 2px #63e7ff;
+        }
+
+        .account-menu-item.danger:hover:not(:disabled),
+        .account-menu-item.danger.confirm {
+            background: rgba(255, 90, 100, 0.18);
+        }
+
+        .account-menu-item:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+
+        .account-menu-note {
+            padding: 6px 8px 2px;
+
+            color: #ffd37a;
+
+            font-size: 12px;
+            line-height: 1.4;
         }
 
         .account-title {
@@ -1376,6 +1488,26 @@
     max-width: none;
 }
 
+.modal-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+
+    margin-top: 16px;
+}
+
+.modal-actions .modal-button {
+    margin-top: 0;
+    height: 38px;
+    padding: 0 16px;
+    font-size: 13px;
+}
+
+.modal-button.ghost {
+    background: transparent;
+}
+
 .modal-button {
     margin-top: 18px;
     height: 42px;
@@ -1486,25 +1618,53 @@
         </nav>
 
 
-        <div
-            class="account"
-            id="microsoftAccount"
-        >
+        <div class="account-wrap">
 
-            <div class="account-title">
-                Compte Microsoft
+            <!-- Menu du compte (s'ouvre au-dessus de la carte) -->
+            <div class="account-menu" id="accountMenu" role="menu" aria-label="Compte Microsoft" hidden>
+
+                <div class="account-menu-user" id="accountMenuUser"></div>
+
+                <button class="account-menu-item" id="accountSwitch" role="menuitem">
+                    Changer de compte
+                </button>
+
+                <button class="account-menu-item danger" id="accountLogout" role="menuitem">
+                    Se déconnecter
+                </button>
+
+                <div class="account-menu-note" id="accountMenuNote" hidden></div>
+
             </div>
 
-            <div class="account-status">
+            <div
+                class="account"
+                id="microsoftAccount"
+                data-state="loading"
+                role="button"
+                tabindex="0"
+                aria-haspopup="menu"
+                aria-expanded="false"
+            >
 
-                <span
-                    class="status-dot offline"
-                    id="accountDot"
-                ></span>
+                <div class="account-title">
+                    Compte Microsoft
+                </div>
 
-                <span id="accountText">
-                    Vérification...
-                </span>
+                <div class="account-status">
+
+                    <span
+                        class="status-dot offline"
+                        id="accountDot"
+                    ></span>
+
+                    <span id="accountText">
+                        Vérification...
+                    </span>
+
+                </div>
+
+                <div class="account-hint" id="accountHint"></div>
 
             </div>
 
@@ -1774,12 +1934,15 @@
 <div
     class="microsoft-modal"
     id="microsoftModal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="microsoftModalTitle"
 >
 
     <div class="modal-card">
 
 
-        <h2>
+        <h2 id="microsoftModalTitle">
             Connexion Microsoft
         </h2>
 
@@ -1800,7 +1963,22 @@
         </div>
 
 
-        <div class="modal-small">
+        <div class="modal-small" id="deviceCodeHint">
+            Page : <strong id="deviceCodePage">microsoft.com/devicelogin</strong>
+            · Code valable encore <strong id="deviceCodeTimer">--:--</strong>
+        </div>
+
+        <div class="modal-small" id="deviceSwitchNote" hidden>
+            Pour changer de compte, choisis « Utiliser un autre compte » dans la page Microsoft.
+        </div>
+
+        <div class="modal-actions">
+            <button class="modal-button" id="deviceCopy">Copier le code</button>
+            <button class="modal-button" id="deviceReopen">Rouvrir la page</button>
+            <button class="modal-button ghost" id="deviceCancel">Annuler</button>
+        </div>
+
+        <div class="modal-small" id="deviceStatus" aria-live="polite">
             Le launcher attend la validation
             de ton compte Microsoft...
         </div>
@@ -1837,355 +2015,482 @@
 <script>
 
 
-    const accountButton =
-        document.getElementById(
-            "microsoftAccount"
-        );
-
-
-    const accountText =
-        document.getElementById(
-            "accountText"
-        );
-
-
-    const accountDot =
-        document.getElementById(
-            "accountDot"
-        );
-
-
-    const modal =
-        document.getElementById(
-            "microsoftModal"
-        );
-
-
-    const deviceCode =
-        document.getElementById(
-            "deviceCode"
-        );
-
-
-    let loginInProgress =
-        false;
-
-
-    let microsoftConnected =
-        false;
-
-
-
     /* =========================
-       AFFICHER COMPTE
+       COMPTE MICROSOFT
+       (connexion, menu, changement de compte, déconnexion, fenêtre du code)
     ========================== */
 
+    const accountButton = document.getElementById("microsoftAccount");
+    const accountText = document.getElementById("accountText");
+    const accountDot = document.getElementById("accountDot");
+    const accountHint = document.getElementById("accountHint");
+    const accountMenu = document.getElementById("accountMenu");
+    const accountMenuUser = document.getElementById("accountMenuUser");
+    const accountMenuNote = document.getElementById("accountMenuNote");
+    const accountSwitchItem = document.getElementById("accountSwitch");
+    const accountLogoutItem = document.getElementById("accountLogout");
 
-    function showConnectedAccount(
-        username
-    ) {
+    const modal = document.getElementById("microsoftModal");
+    const deviceCode = document.getElementById("deviceCode");
+    const deviceCodePage = document.getElementById("deviceCodePage");
+    const deviceCodeTimer = document.getElementById("deviceCodeTimer");
+    const deviceSwitchNote = document.getElementById("deviceSwitchNote");
+    const deviceStatus = document.getElementById("deviceStatus");
+    const deviceCopy = document.getElementById("deviceCopy");
+    const deviceReopen = document.getElementById("deviceReopen");
+    const deviceCancel = document.getElementById("deviceCancel");
 
-        microsoftConnected =
-            true;
+    let loginInProgress = false;
+    let microsoftConnected = false;
+    let switchingAccount = false;
+    let accountEmail = null;
+    let logoutConfirmTimer = null;
+    let deviceTimer = null;
+    let modalReturnFocus = null;
 
 
-        accountDot.classList.remove(
-            "loading",
-            "error",
-            "offline"
+    /* ----- états de la carte du compte ----- */
+
+    function setAccountState(state, text, hint) {
+
+        accountButton.dataset.state = state;
+
+        accountDot.classList.remove("loading", "error", "offline");
+
+        if (state !== "connected") {
+            accountDot.classList.add(state);
+        }
+
+        accountText.textContent = text;
+        accountHint.textContent = hint || "";
+
+        accountButton.setAttribute(
+            "aria-label",
+            "Compte Microsoft : " + text + (hint ? ". " + hint : "")
         );
-
-
-        accountText.textContent =
-            username ||
-            "Compte connecté";
     }
 
+    function showConnectedAccount(username) {
 
+        microsoftConnected = true;
+        accountEmail = username || null;
 
-    /* =========================
-       AFFICHER DÉCONNECTÉ
-    ========================== */
-
+        setAccountState("connected", username || "Compte connecté", "Gérer le compte ›");
+    }
 
     function showDisconnected() {
 
-        microsoftConnected =
-            false;
+        microsoftConnected = false;
+        accountEmail = null;
 
+        setAccountState("offline", "Non connecté", "Se connecter ›");
+    }
 
-        accountDot.classList.remove(
-            "loading",
-            "error"
-        );
+    function showAccountError(text) {
 
+        microsoftConnected = false;
 
-        accountDot.classList.add(
-            "offline"
-        );
-
-
-        accountText.textContent =
-            "Non connecté";
+        setAccountState("error", text, "Réessayer ›");
     }
 
 
-
-    /* =========================
-       SESSION AU DÉMARRAGE
-    ========================== */
-
+    /* ----- session au démarrage ----- */
 
     async function checkMicrosoftSession() {
 
         try {
 
-            if (
-                !window.cobbleRealm ||
-                !window.cobbleRealm
-                    .getMicrosoftSession
-            ) {
-
+            if (!window.cobbleRealm || !window.cobbleRealm.getMicrosoftSession) {
                 showDisconnected();
-
                 return;
             }
 
+            const session = await window.cobbleRealm.getMicrosoftSession();
 
-            const session =
-                await window
-                    .cobbleRealm
-                    .getMicrosoftSession();
-
-
-            if (
-                session &&
-                session.success &&
-                session.connected &&
-                session.account
-            ) {
-
-                showConnectedAccount(
-                    session
-                        .account
-                        .username
-                );
-
+            if (session && session.success && session.connected && session.account) {
+                showConnectedAccount(session.account.username);
             } else {
-
                 showDisconnected();
-
             }
-
 
         } catch (error) {
 
-            console.error(
-                "Erreur session Microsoft :",
-                error
-            );
+            console.error("Erreur session Microsoft :", error);
+            showDisconnected();
+        }
+    }
 
+
+    /* ----- fenêtre du code ----- */
+
+    function formatTimer(totalSeconds) {
+
+        const seconds = Math.max(0, Math.floor(totalSeconds));
+
+        return String(Math.floor(seconds / 60)).padStart(2, "0") + ":" + String(seconds % 60).padStart(2, "0");
+    }
+
+    function stopDeviceTimer() {
+
+        if (deviceTimer) {
+            clearInterval(deviceTimer);
+            deviceTimer = null;
+        }
+    }
+
+    function showDeviceCode(data) {
+
+        deviceCode.textContent = data.userCode || "----";
+
+        try {
+
+            const url = new URL(data.verificationUri);
+            deviceCodePage.textContent = url.host + url.pathname.replace(/\/$/, "");
+
+        } catch {
+
+            deviceCodePage.textContent = "microsoft.com/devicelogin";
+        }
+
+        deviceSwitchNote.hidden = !switchingAccount;
+        deviceStatus.textContent = "Le launcher attend la validation de ton compte Microsoft...";
+
+        stopDeviceTimer();
+
+        const expiresAt = Date.now() + (Number(data.expiresIn) || 900) * 1000;
+
+        const tick = () => {
+
+            const left = (expiresAt - Date.now()) / 1000;
+
+            deviceCodeTimer.textContent = formatTimer(left);
+
+            if (left <= 0) {
+
+                stopDeviceTimer();
+                deviceStatus.textContent = "Ce code a expiré. Annule puis recommence pour en obtenir un nouveau.";
+            }
+        };
+
+        tick();
+        deviceTimer = setInterval(tick, 1000);
+
+        if (!modal.classList.contains("show")) {
+
+            modalReturnFocus = document.activeElement;
+            modal.classList.add("show");
+            deviceCopy.focus();
+        }
+    }
+
+    function hideDeviceCode() {
+
+        stopDeviceTimer();
+
+        if (!modal.classList.contains("show")) {
+            return;
+        }
+
+        modal.classList.remove("show");
+
+        if (modalReturnFocus && modalReturnFocus.focus) {
+            modalReturnFocus.focus();
+        }
+
+        modalReturnFocus = null;
+    }
+
+    if (window.cobbleRealm && window.cobbleRealm.onMicrosoftDeviceCode) {
+
+        window.cobbleRealm.onMicrosoftDeviceCode((data) => {
+
+            /* null = connexion terminée ou annulée : on ferme la fenêtre */
+            if (!data) {
+                hideDeviceCode();
+                return;
+            }
+
+            showDeviceCode(data);
+        });
+    }
+
+    deviceCopy.addEventListener("click", async () => {
+
+        let result = null;
+
+        try {
+            result = await window.cobbleRealm.copyMicrosoftCode();
+        } catch { /* message ci-dessous */ }
+
+        deviceCopy.textContent = result && result.success ? "Code copié ✓" : "Copie impossible";
+
+        setTimeout(() => { deviceCopy.textContent = "Copier le code"; }, 2200);
+    });
+
+    deviceReopen.addEventListener("click", async () => {
+
+        let result = null;
+
+        try {
+            result = await window.cobbleRealm.openMicrosoftLoginPage();
+        } catch { /* message ci-dessous */ }
+
+        deviceStatus.textContent = result && result.success
+            ? "Page rouverte dans ton navigateur."
+            : "Impossible d'ouvrir la page. Recopie l'adresse indiquée ci-dessus dans ton navigateur.";
+    });
+
+    async function cancelLogin() {
+
+        try {
+            await window.cobbleRealm.cancelMicrosoftLogin();
+        } catch { /* la fenêtre se ferme de toute façon */ }
+
+        hideDeviceCode();
+    }
+
+    deviceCancel.addEventListener("click", cancelLogin);
+
+    /* Échap annule la connexion ; Tab reste dans la fenêtre. */
+    document.addEventListener("keydown", (event) => {
+
+        if (!modal.classList.contains("show")) {
+            return;
+        }
+
+        if (event.key === "Escape") {
+
+            event.preventDefault();
+            event.stopPropagation();
+            cancelLogin();
+
+            return;
+        }
+
+        if (event.key === "Tab") {
+
+            const items = [deviceCopy, deviceReopen, deviceCancel];
+            const index = items.indexOf(document.activeElement);
+
+            event.preventDefault();
+
+            items[(index + (event.shiftKey ? -1 : 1) + items.length) % items.length].focus();
+        }
+    }, true);
+
+
+    /* ----- connexion ----- */
+
+    async function startLogin({ switching = false } = {}) {
+
+        if (loginInProgress) {
+            return;
+        }
+
+        loginInProgress = true;
+        switchingAccount = switching;
+
+        setAccountState("loading", "Connexion...", "");
+
+        try {
+
+            const result = await window.cobbleRealm.loginMicrosoft();
+
+            hideDeviceCode();
+
+            if (result && result.success) {
+
+                showConnectedAccount(result.account && result.account.username);
+
+            } else if (result && result.code === "MICROSOFT_CANCELLED") {
+
+                showDisconnected();
+
+            } else if (result && result.code === "MICROSOFT_EXPIRED") {
+
+                showAccountError("Code expiré");
+
+            } else {
+
+                showAccountError("Connexion impossible");
+
+                console.error(result ? result.error : "Erreur inconnue");
+            }
+
+        } catch (error) {
+
+            hideDeviceCode();
+            showAccountError("Connexion impossible");
+
+            console.error(error);
+
+        } finally {
+
+            loginInProgress = false;
+            switchingAccount = false;
+        }
+    }
+
+
+    /* ----- menu du compte ----- */
+
+    function menuItems() {
+        return [accountSwitchItem, accountLogoutItem];
+    }
+
+    function resetLogoutConfirm() {
+
+        clearTimeout(logoutConfirmTimer);
+
+        accountLogoutItem.classList.remove("confirm");
+        accountLogoutItem.textContent = "Se déconnecter";
+    }
+
+    function closeAccountMenu({ returnFocus = false } = {}) {
+
+        accountMenu.hidden = true;
+        accountButton.setAttribute("aria-expanded", "false");
+        resetLogoutConfirm();
+
+        if (returnFocus) {
+            accountButton.focus();
+        }
+    }
+
+    function openAccountMenu() {
+
+        const busy = minecraftLaunching || loginInProgress;
+
+        accountMenuUser.textContent = accountEmail || "Compte connecté";
+
+        accountSwitchItem.disabled = busy;
+        accountLogoutItem.disabled = busy;
+
+        accountMenuNote.hidden = !busy;
+        accountMenuNote.textContent = busy ? "Indisponible pendant le lancement." : "";
+
+        accountMenu.hidden = false;
+        accountButton.setAttribute("aria-expanded", "true");
+
+        (busy ? accountButton : accountSwitchItem).focus();
+    }
+
+    function onAccountActivate() {
+
+        if (!microsoftConnected) {
+
+            startLogin();
+            return;
+        }
+
+        if (accountMenu.hidden) {
+            openAccountMenu();
+        } else {
+            closeAccountMenu({ returnFocus: true });
+        }
+    }
+
+    accountButton.addEventListener("click", onAccountActivate);
+
+    accountButton.addEventListener("keydown", (event) => {
+
+        if (event.key === "Enter" || event.key === " ") {
+
+            event.preventDefault();
+            onAccountActivate();
+        }
+    });
+
+    accountMenu.addEventListener("keydown", (event) => {
+
+        const items = menuItems().filter((item) => !item.disabled);
+        const index = items.indexOf(document.activeElement);
+
+        if (event.key === "Escape") {
+
+            event.preventDefault();
+            closeAccountMenu({ returnFocus: true });
+
+        } else if (event.key === "ArrowDown" && items.length) {
+
+            event.preventDefault();
+            items[(index + 1) % items.length].focus();
+
+        } else if (event.key === "ArrowUp" && items.length) {
+
+            event.preventDefault();
+            items[(index - 1 + items.length) % items.length].focus();
+
+        } else if (event.key === "Tab") {
+
+            closeAccountMenu();
+        }
+    });
+
+    document.addEventListener("click", (event) => {
+
+        if (!accountMenu.hidden && !accountMenu.contains(event.target) && !accountButton.contains(event.target)) {
+            closeAccountMenu();
+        }
+    });
+
+    async function logoutAccount() {
+
+        let result = null;
+
+        try {
+            result = await window.cobbleRealm.logoutMicrosoft();
+        } catch { /* message ci-dessous */ }
+
+        if (result && result.success) {
 
             showDisconnected();
 
+            return true;
         }
 
+        accountMenuNote.hidden = false;
+        accountMenuNote.textContent = (result && result.error) || "La déconnexion a échoué.";
+
+        return false;
     }
 
+    accountLogoutItem.addEventListener("click", async () => {
 
+        /* Une confirmation en une étape : un second clic dans les 4 secondes déconnecte. */
+        if (!accountLogoutItem.classList.contains("confirm")) {
 
-    /* =========================
-       CODE MICROSOFT
-    ========================== */
+            accountLogoutItem.classList.add("confirm");
+            accountLogoutItem.textContent = "Confirmer la déconnexion";
 
+            clearTimeout(logoutConfirmTimer);
+            logoutConfirmTimer = setTimeout(resetLogoutConfirm, 4000);
 
-    if (
-        window.cobbleRealm &&
-        window.cobbleRealm
-            .onMicrosoftDeviceCode
-    ) {
-
-        window.cobbleRealm
-            .onMicrosoftDeviceCode(
-
-                (data) => {
-
-                    /* null = connexion terminée, on ferme la fenêtre */
-                    if (!data) {
-
-                        modal.classList.remove(
-                            "show"
-                        );
-
-                        return;
-                    }
-
-                    deviceCode.textContent =
-                        data.userCode ||
-                        "----";
-
-
-                    modal.classList.add(
-                        "show"
-                    );
-
-                }
-
-            );
-
-    }
-
-
-
-    /* =========================
-       CLIC COMPTE
-    ========================== */
-
-
-    accountButton.addEventListener(
-
-        "click",
-
-        async () => {
-
-
-            /*
-             * Déjà connecté :
-             * pour l'instant on ne fait rien.
-             * Plus tard on ajoutera
-             * un menu compte / déconnexion.
-             */
-
-            if (
-                microsoftConnected
-            ) {
-
-                return;
-            }
-
-
-            if (
-                loginInProgress
-            ) {
-
-                return;
-            }
-
-
-            loginInProgress =
-                true;
-
-
-            accountText.textContent =
-                "Connexion...";
-
-
-            accountDot.classList.remove(
-                "offline",
-                "error"
-            );
-
-
-            accountDot.classList.add(
-                "loading"
-            );
-
-
-            try {
-
-
-                const result =
-                    await window
-                        .cobbleRealm
-                        .loginMicrosoft();
-
-
-                modal.classList.remove(
-                    "show"
-                );
-
-
-                if (
-                    result &&
-                    result.success
-                ) {
-
-
-                    showConnectedAccount(
-
-                        result.account &&
-                        result.account
-                            .username
-
-                    );
-
-
-                } else {
-
-
-                    accountDot.classList.remove(
-                        "loading"
-                    );
-
-
-                    accountDot.classList.add(
-                        "error"
-                    );
-
-
-                    accountText.textContent =
-                        "Erreur de connexion";
-
-
-                    console.error(
-                        result
-                            ? result.error
-                            : "Erreur inconnue"
-                    );
-
-                }
-
-
-            } catch (error) {
-
-
-                modal.classList.remove(
-                    "show"
-                );
-
-
-                accountDot.classList.remove(
-                    "loading"
-                );
-
-
-                accountDot.classList.add(
-                    "error"
-                );
-
-
-                accountText.textContent =
-                    "Erreur de connexion";
-
-
-                console.error(
-                    error
-                );
-
-
-            } finally {
-
-
-                loginInProgress =
-                    false;
-
-
-            }
-
-
+            return;
         }
 
-    );
+        resetLogoutConfirm();
+
+        if (await logoutAccount()) {
+            closeAccountMenu({ returnFocus: true });
+        }
+    });
+
+    async function switchAccount() {
+
+        if (loginInProgress || minecraftLaunching) {
+            return;
+        }
+
+        if (microsoftConnected && !(await logoutAccount())) {
+            return;
+        }
+
+        closeAccountMenu();
+        startLogin({ switching: true });
+    }
+
+    accountSwitchItem.addEventListener("click", switchAccount);
 
 
 
@@ -2583,8 +2888,14 @@ const ERROR_ACTIONS = {
     help: {
         label: "Obtenir de l'aide",
         run: () => window.cobbleRealm.openDiscord()
+    },
+    switchAccount: {
+        label: "Changer de compte",
+        run: () => {
+            hideError();
+            switchAccount();
+        }
     }
-    /* "switchAccount" (Changer de compte) est ajouté avec la gestion du compte */
 };
 
 function hideError() {

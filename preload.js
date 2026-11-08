@@ -16,6 +16,24 @@ contextBridge.exposeInMainWorld(
                 "microsoft-login"
             ),
 
+        /* Annule la connexion en cours (la fenêtre du code se ferme) */
+        cancelMicrosoftLogin: () =>
+            ipcRenderer.invoke(
+                "microsoft-cancel-login"
+            ),
+
+        /* Copie le code de connexion en cours dans le presse-papiers */
+        copyMicrosoftCode: () =>
+            ipcRenderer.invoke(
+                "copy-login-code"
+            ),
+
+        /* Rouvre la page Microsoft du code en cours (adresse choisie par le launcher) */
+        openMicrosoftLoginPage: () =>
+            ipcRenderer.invoke(
+                "open-microsoft-login-page"
+            ),
+
         getMicrosoftSession: () =>
             ipcRenderer.invoke(
                 "microsoft-session"

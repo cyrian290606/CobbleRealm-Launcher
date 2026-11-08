@@ -14,6 +14,8 @@ Ce fichier présente, version après version, ce qui change pour les joueurs.
 - Suivi du téléchargement plus complet : barre de progression, fichier en cours, nombre de fichiers et vitesse.
 - Si tu n'as pas de connexion Internet, tu peux lancer la version déjà installée (avec un avertissement).
 - Le launcher se met désormais à jour tout seul.
+- Nouveau menu du compte Microsoft : tu peux changer de compte ou te déconnecter depuis le launcher.
+- Fenêtre de connexion Microsoft plus complète : boutons pour copier le code, rouvrir la page ou annuler, avec le temps restant avant l'expiration du code.
 
 ### Améliorations
 - La mise à jour se termine toujours avant le lancement du jeu : plus de risque de démarrer avec une installation à moitié à jour.
@@ -26,10 +28,13 @@ Ce fichier présente, version après version, ce qui change pour les joueurs.
 - Quand une erreur survient, un message clair en français explique ce qui s'est passé, avec des boutons adaptés : Réessayer, Réparer l'installation, Copier le rapport ou Obtenir de l'aide.
 - Le bouton « Copier le rapport » prépare un résumé à envoyer à l'équipe en cas de problème, sans aucune information personnelle (compte, pseudo, mots de passe ou nom de ton ordinateur).
 - Tu es maintenant prévenu si Minecraft s'arrête à cause d'une erreur.
+- Quand tu n'es pas connecté, le compte s'affiche en gris avec une indication claire pour te connecter (il apparaissait en vert, comme si tout allait bien).
+- Le compte Microsoft et la fenêtre de connexion peuvent s'utiliser au clavier (Entrée, flèches, Tab, Échap).
 - L'annonce s'adapte à la taille de ta fenêtre : sur une petite fenêtre, elle se réduit et un bouton « Lire la suite » affiche le texte complet.
 
 ### Corrections
 - Sur les petites fenêtres, le titre CobbleRealm n'est plus coupé et l'annonce ne recouvre plus le bouton JOUER.
+- Il n'était pas possible d'annuler une connexion Microsoft en cours : c'est désormais possible à tout moment.
 - Un message de développement incompréhensible (« APPID EN ATTENTE ») qui pouvait s'afficher sur le bouton JOUER a été supprimé : il est remplacé par une explication claire.
 - Le bouton JOUER redevient utilisable immédiatement après une erreur, sans attendre quelques secondes.
 - Le code de connexion Microsoft s'affiche maintenant aussi quand il faut te reconnecter au moment de jouer.

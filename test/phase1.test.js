@@ -58,6 +58,8 @@ const upd = {
 
 const javaCalls = [];
 let clipboardText = "";
+let cancelCalls = 0;
+let logoutCalls = 0;
 let javaFailure = null;
 let fabricFailure = null;
 let mcImpl = null;
@@ -95,7 +97,8 @@ const fakes = {
     "./auth": {
         loginMicrosoft: (cb) => authImpl(cb),
         getMicrosoftSession: async () => ({}),
-        logoutMicrosoft: async () => ({})
+        cancelLogin: () => { cancelCalls++; return true; },
+        logoutMicrosoft: async () => { logoutCalls++; return { success: true }; }
     },
     "./minecraftAuth": {
         loginMinecraft: async (...args) => mcImpl ? mcImpl(...args) : ({
@@ -167,7 +170,7 @@ function reset() {
     calls.length = 0; launchedOptions.length = 0; javaCalls.length = 0; fabricCalls.length = 0; opened.length = 0;
     launchBehavior = "ok";
     authImpl = defaultAuth;
-    mcImpl = null; javaFailure = null; fabricFailure = null; clipboardText = "";
+    cancelCalls = 0; logoutCalls = 0; mcImpl = null; javaFailure = null; fabricFailure = null; clipboardText = "";
     upd.syncImpl = async () => ({ ok: true, offline: false, version: "10" });
     upd.manifest = { minecraft: "1.21.1", fabricLoader: "0.18.4", java: 21, recommendedRamGb: 6 };
     upd.lock = null;
@@ -527,6 +530,137 @@ test("Rapport de support : origine inconnue refusée", async () => {
     const r = await ipc["copy-support-report"]({ sender: sender() });
     assert.strictEqual(r.success, false);
     assert.strictEqual(clipboardText, "");
+});
+
+/* ---------- Groupe 3 : compte Microsoft ---------- */
+
+test("Annuler la connexion : arrêt côté Microsoft et fenêtre du code fermée", async () => {
+    reset();
+    const s = sender();
+    const r = await ipc["microsoft-cancel-login"](trusted(s));
+    assert.ok(r.success);
+    assert.strictEqual(cancelCalls, 1);
+    const codes = sentOn(s, "microsoft-device-code");
+    assert.strictEqual(codes[codes.length - 1], null);
+
+    const refused = await ipc["microsoft-cancel-login"]({ sender: sender() });
+    assert.strictEqual(refused.success, false);
+    assert.strictEqual(cancelCalls, 1, "origine inconnue : refusé");
+});
+
+test("Rouvrir la page : seule l'adresse Microsoft du code en cours, jamais une adresse venue de la page", async () => {
+    reset();
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    authImpl = async (cb) => {
+        calls.push("auth");
+        await cb({ userCode: "ABCD1234", verificationUri: "https://microsoft.com/devicelogin", expiresIn: 900, message: "m" });
+        await gate;
+        return { success: true, accessToken: SECRET_MS, account: { username: "joueur.secret@gmail.com" } };
+    };
+    const pending = ipc["microsoft-login"](trusted(sender()));
+    await new Promise((r) => setTimeout(r, 20));
+
+    opened.length = 0;
+    const r = await ipc["open-microsoft-login-page"](trusted(sender()), "https://evil.example.com/phish");
+    assert.ok(r.success);
+    assert.deepStrictEqual(opened, ["https://microsoft.com/devicelogin"]);
+
+    release();
+    const login = await pending;
+    assert.ok(login.success);
+
+    const afterwards = await ipc["open-microsoft-login-page"](trusted(sender()));
+    assert.strictEqual(afterwards.success, false, "plus de connexion en cours");
+
+    // un code dont la page n'est pas Microsoft n'est jamais rouvrable
+    authImpl = async (cb) => {
+        await cb({ userCode: "EVIL", verificationUri: "https://evil.example.com/x", expiresIn: 900, message: "m" });
+        return { success: false, error: "x" };
+    };
+    await ipc["microsoft-login"](trusted(sender()));
+    assert.strictEqual((await ipc["open-microsoft-login-page"](trusted(sender()))).success, false);
+});
+
+test("Copier le code : le code de la connexion en cours, jamais un texte venu de la page", async () => {
+    reset();
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    authImpl = async (cb) => {
+        await cb({ userCode: "AB12CD34", verificationUri: "https://microsoft.com/devicelogin", expiresIn: 900, message: "m" });
+        await gate;
+        return { success: false, code: "MICROSOFT_CANCELLED", error: "x" };
+    };
+    const pending = ipc["microsoft-login"](trusted(sender()));
+    await new Promise((r) => setTimeout(r, 20));
+
+    clipboardText = "";
+    const ok = await ipc["copy-login-code"](trusted(sender()), "TEXTE-ARBITRAIRE-DE-LA-PAGE");
+    assert.ok(ok.success);
+    assert.strictEqual(clipboardText, "AB12CD34");
+
+    release();
+    await pending;
+    clipboardText = "";
+    const after = await ipc["copy-login-code"](trusted(sender()));
+    assert.strictEqual(after.success, false, "plus de connexion en cours");
+    assert.strictEqual(clipboardText, "");
+
+    const unknown = await ipc["copy-login-code"]({ sender: sender() });
+    assert.strictEqual(unknown.success, false);
+
+    // un code au format inattendu n'est jamais copiable
+    authImpl = async (cb) => { await cb({ userCode: "A B; rm -rf /", verificationUri: "https://microsoft.com/devicelogin", expiresIn: 900, message: "m" }); return { success: false, error: "x" }; };
+    await ipc["microsoft-login"](trusted(sender()));
+    assert.strictEqual((await ipc["copy-login-code"](trusted(sender()))).success, false);
+});
+
+test("Le code Microsoft transmis à la page contient sa durée de validité", async () => {
+    reset();
+    const s = sender();
+    authImpl = async (cb) => {
+        await cb({ userCode: "ABCD1234", verificationUri: "https://microsoft.com/devicelogin", expiresIn: 900, message: "m" });
+        return { success: true, accessToken: SECRET_MS };
+    };
+    await ipc["microsoft-login"](trusted(s));
+    const [first] = sentOn(s, "microsoft-device-code");
+    assert.strictEqual(first.expiresIn, 900);
+});
+
+test("Déconnexion : refusée pendant un lancement, autorisée ensuite ; origine inconnue refusée", async () => {
+    reset();
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    authImpl = async () => { calls.push("auth"); await gate; return { success: true, accessToken: SECRET_MS }; };
+
+    const launching = ipc["launch-minecraft"](trusted(sender()), { ram: 4 });
+    await new Promise((r) => setTimeout(r, 30));
+
+    const refused = await ipc["microsoft-logout"](trusted(sender()));
+    assert.strictEqual(refused.success, false);
+    assert.match(refused.error, /pendant le lancement/);
+    assert.strictEqual(logoutCalls, 0);
+
+    release();
+    await launching;
+    theClient.emit("close", 0);
+
+    const ok = await ipc["microsoft-logout"](trusted(sender()));
+    assert.ok(ok.success);
+    assert.strictEqual(logoutCalls, 1);
+
+    const unknown = await ipc["microsoft-logout"]({ sender: sender() });
+    assert.strictEqual(unknown.success, false);
+    assert.strictEqual(logoutCalls, 1);
+});
+
+test("Connexion annulée pendant JOUER : message « Connexion annulée », rien d'autre exécuté", async () => {
+    reset();
+    authImpl = async () => { calls.push("auth"); return { success: false, code: "MICROSOFT_CANCELLED", error: "Connexion annulée." }; };
+    const { r, error } = await launchAndGetError();
+    assert.strictEqual(error.code, "MICROSOFT_CANCELLED");
+    assert.deepStrictEqual(error.actions, ["retry"]);
+    assert.deepStrictEqual(calls, ["sync", "auth"]);
 });
 
 /* ---------- Phase 5 : versions pilotées par le manifest ---------- */

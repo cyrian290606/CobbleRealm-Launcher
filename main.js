@@ -18,6 +18,7 @@ const {
 
 const {
     loginMicrosoft,
+    cancelLogin,
     getMicrosoftSession,
     logoutMicrosoft
 } = require("./auth");
@@ -142,6 +143,10 @@ function isMicrosoftUrl(value) {
 
 
 /* Callback du code d'appareil Microsoft, vers l'interface. */
+/* Page et code de la connexion en cours (jamais fournis par la page : « Rouvrir la page » et « Copier le code » les utilisent). */
+let currentLoginPage = null;
+let currentLoginCode = null;
+
 function createDeviceCodeHandler(sender) {
 
     return async (deviceCode) => {
@@ -151,6 +156,16 @@ function createDeviceCodeHandler(sender) {
             "microsoft-device-code",
             deviceCode
         );
+
+        currentLoginCode =
+            deviceCode && typeof deviceCode.userCode === "string" && /^[A-Za-z0-9]{4,20}$/.test(deviceCode.userCode)
+                ? deviceCode.userCode
+                : null;
+
+        currentLoginPage =
+            deviceCode && isMicrosoftUrl(deviceCode.verificationUri)
+                ? deviceCode.verificationUri
+                : null;
 
         if (
             deviceCode &&
@@ -796,7 +811,96 @@ handle(
                 createDeviceCodeHandler(event.sender)
             );
 
+        currentLoginPage = null;
+        currentLoginCode = null;
+
+        /* Ferme la fenêtre du code, quelle que soit l'issue. */
+        safeSend(
+            event.sender,
+            "microsoft-device-code",
+            null
+        );
+
+        if (result && result.success) {
+            rememberPrivate(result.account && result.account.username);
+        }
+
         return result;
+    }
+);
+
+/* Annulation par le joueur : la fenêtre du code se ferme tout de suite. */
+handle(
+    "microsoft-cancel-login",
+
+    async (event) => {
+
+        const cancelled =
+            cancelLogin();
+
+        currentLoginPage = null;
+        currentLoginCode = null;
+
+        safeSend(
+            event.sender,
+            "microsoft-device-code",
+            null
+        );
+
+        return {
+            success: true,
+            cancelled
+        };
+    }
+);
+
+/* « Copier le code » : copie le code de la connexion en cours. */
+handle(
+    "copy-login-code",
+
+    async () => {
+
+        if (!currentLoginCode) {
+
+            return {
+                success: false,
+                error: "Aucun code en cours."
+            };
+        }
+
+        clipboard.writeText(currentLoginCode);
+
+        return { success: true };
+    }
+);
+
+/* « Rouvrir la page » : seule l'adresse Microsoft du code en cours peut être ouverte. */
+handle(
+    "open-microsoft-login-page",
+
+    async () => {
+
+        if (!currentLoginPage) {
+
+            return {
+                success: false,
+                error: "Aucune connexion en cours."
+            };
+        }
+
+        try {
+
+            await shell.openExternal(currentLoginPage);
+
+            return { success: true };
+
+        } catch {
+
+            return {
+                success: false,
+                error: "Impossible d'ouvrir la page."
+            };
+        }
     }
 );
 
@@ -805,8 +909,14 @@ handle(
 
     async () => {
 
-        return await
-            getMicrosoftSession();
+        const session =
+            await getMicrosoftSession();
+
+        if (session && session.account) {
+            rememberPrivate(session.account.username);
+        }
+
+        return session;
     }
 );
 
@@ -814,6 +924,15 @@ handle(
     "microsoft-logout",
 
     async () => {
+
+        /* On ne change pas de compte pendant un lancement. */
+        if (launchInProgress) {
+
+            return {
+                success: false,
+                error: "Impossible de se déconnecter pendant le lancement de Minecraft."
+            };
+        }
 
         return await
             logoutMicrosoft();
