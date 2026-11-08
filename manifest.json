@@ -1,5 +1,7 @@
 {
   "version": "1.0.5",
   "minecraftVersion": "1.21.1",
-  "download": "https://github.com/cyrian290606/CobbleRealm-Launcher/releases/download/modpackV5/CobbleRealm-v1.0.3.zip"
+  "downloads": [
+    "https://github.com/cyrian290606/CobbleRealm-Launcher/releases/download/modpackV5/CobbleRealm-v1.0.3.zip"
+  ]
 }

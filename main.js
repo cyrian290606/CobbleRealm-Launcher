@@ -1010,7 +1010,21 @@ for (let i = 0; i < zipPaths.length; i++) {
     // ==============================
 
     const incompatibleMods = [
-        "seasonhud-fabric-1.21.1-1.13.8.jar"
+        "seasonhud-fabric-1.21.1-1.13.8.jar",
+
+        // Doublons : on garde la version la plus récente
+        "ForgeConfigAPIPort-v21.1.4-1.21.1-Fabric.jar",
+        "architectury-13.0.8-fabric.jar",
+        "cobblemon_quests-[1.21.1]-fabric-1.1.14.jar",
+
+        // Mods désactivés : inutiles sur le disque des joueurs
+        "Chunky-Fabric-1.4.23.jar.disabled",
+        "academy-mc1.21.1-v2.4.1+build.550-fabric.jar.disabled",
+        "bobby-5.2.4+mc1.21.jar.disabled",
+        "c2me-fabric-mc1.21.1-0.3.0+alpha.0.320.jar.disabled",
+        "cobblemon_spawn_alerts-fabric-1.8.2.jar.disabled",
+        "cobblemountslot-1.0.1.jar.disabled",
+        "worldedit-mod-7.3.8.jar.disabled"
     ];
 
     for (const modFile of incompatibleMods) {
