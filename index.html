@@ -1413,6 +1413,121 @@
         }
 
 /* =========================
+   CONSOLE
+========================= */
+
+.console-page {
+    display: flex;
+    flex-direction: column;
+}
+
+.console-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px 16px;
+
+    margin-bottom: 12px;
+}
+
+.console-filter {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    color: #aebed3;
+
+    font-size: 14px;
+}
+
+.console-filter select {
+    min-width: 0;
+    padding: 7px 10px;
+
+    border-radius: 10px;
+    border: 1px solid rgba(53, 222, 255, 0.35);
+
+    color: white;
+    background: #0a1830;
+
+    font-family: inherit;
+    font-size: 14px;
+}
+
+.console-filter select:focus-visible {
+    outline: 2px solid #63e7ff;
+    outline-offset: 3px;
+}
+
+.console-count {
+    color: #8ea2bb;
+
+    font-size: 13px;
+}
+
+.console-actions {
+    display: flex;
+    gap: 8px;
+
+    margin-left: auto;
+}
+
+.console-jump {
+    position: absolute;
+    right: 90px;
+    bottom: 60px;
+    z-index: 6;
+
+    padding: 8px 14px;
+
+    border-radius: 999px;
+    border: 1px solid rgba(99, 231, 255, 0.6);
+
+    color: white;
+    background: rgba(8, 40, 70, 0.92);
+
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 800;
+
+    cursor: pointer;
+}
+
+.console-jump[hidden] {
+    display: none;
+}
+
+.log-line {
+    display: flex;
+    gap: 12px;
+
+    padding: 1px 0;
+
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.log-time {
+    flex-shrink: 0;
+
+    color: #5f7792;
+}
+
+.log-text {
+    min-width: 0;
+}
+
+.log-line.src-launcher .log-text { color: #7fe9ff; }
+.log-line.src-game .log-text { color: #b9c9dc; }
+.log-line.level-warn .log-text { color: #ffd37a; }
+.log-line.level-error .log-text { color: #ff8f98; font-weight: 700; }
+
+#consoleOutput[data-filter="problems"] .log-line:not(.level-warn):not(.level-error) {
+    display: none;
+}
+
+/* =========================
    PARAMÈTRES
 ========================= */
 
@@ -2479,9 +2594,29 @@ kbd {
             Logs de CobbleRealm Launcher et de Minecraft.
         </p>
 
-        <div class="console-box" id="consoleOutput" role="log" aria-live="off" aria-label="Journal du launcher et de Minecraft" tabindex="0">
-            <div>[CobbleRealm] Console prête.</div>
+        <button class="console-jump" id="consoleJump" hidden>↓ Nouveaux messages</button>
+
+        <div class="console-toolbar" id="consoleToolbar">
+
+            <label class="console-filter">
+                <span>Afficher</span>
+                <select id="consoleFilter" aria-label="Filtrer les messages">
+                    <option value="all">Tout</option>
+                    <option value="problems">Avertissements et erreurs</option>
+                </select>
+            </label>
+
+            <span class="console-count" id="consoleCount" role="status" aria-live="polite"></span>
+
+            <div class="console-actions">
+                <button class="setting-button" id="consoleCopy">Copier</button>
+                <button class="setting-button" id="consoleExport">Exporter</button>
+                <button class="setting-button" id="consoleClear">Effacer</button>
+            </div>
+
         </div>
+
+        <div class="console-box" id="consoleOutput" data-filter="all" role="log" aria-live="off" aria-label="Journal du launcher et de Minecraft" tabindex="0">        </div>
 
     </div>
 
@@ -4309,23 +4444,184 @@ const consoleOutput =
     document.getElementById("consoleOutput");
 
 
+/* =========================
+   CONSOLE : LIGNES LISIBLES, FILTRE, COPIE, EXPORT
+========================= */
+
+const MAX_CONSOLE_LINES = 2000;
+
+const consoleFilter = document.getElementById("consoleFilter");
+const consoleCount = document.getElementById("consoleCount");
+const consoleJump = document.getElementById("consoleJump");
+
+let consoleQueue = [];
+let consoleFlushTimer = null;
+
+function consoleIsAtBottom() {
+
+    return consoleOutput.scrollHeight - consoleOutput.scrollTop - consoleOutput.clientHeight < 40;
+}
+
+function classifyLine(text) {
+
+    if (/\b(ERROR|FATAL|SEVERE|Exception|Erreur|échec|echec|crash)/i.test(text)) {
+        return "level-error";
+    }
+
+    if (/\b(WARN|WARNING|Attention|Avertissement)\b/i.test(text)) {
+        return "level-warn";
+    }
+
+    return "";
+}
+
+function updateConsoleCount() {
+
+    const total = consoleOutput.children.length;
+
+    consoleCount.textContent = total + " ligne" + (total > 1 ? "s" : "");
+}
+
+function flushConsole() {
+
+    consoleFlushTimer = null;
+
+    if (!consoleOutput || consoleQueue.length === 0) {
+        return;
+    }
+
+    const stickToBottom = consoleIsAtBottom();
+    const fragment = document.createDocumentFragment();
+
+    for (const entry of consoleQueue) {
+
+        const line = document.createElement("div");
+
+        line.className = ("log-line " + classifyLine(entry.text) + " " +
+            (/^\[CobbleRealm\]|^\[Launcher\]|^\[Erreur\]/.test(entry.text) ? "src-launcher" : "src-game")).replace(/\s+/g, " ").trim();
+
+        const time = document.createElement("span");
+        time.className = "log-time";
+        time.textContent = entry.time;
+
+        const text = document.createElement("span");
+        text.className = "log-text";
+        text.textContent = entry.text;
+
+        line.appendChild(time);
+        line.appendChild(text);
+        fragment.appendChild(line);
+    }
+
+    consoleQueue = [];
+    consoleOutput.appendChild(fragment);
+
+    /* au plus MAX_CONSOLE_LINES lignes : les plus anciennes disparaissent */
+    while (consoleOutput.children.length > MAX_CONSOLE_LINES) {
+        consoleOutput.removeChild(consoleOutput.firstChild);
+    }
+
+    if (stickToBottom) {
+
+        consoleOutput.scrollTop = consoleOutput.scrollHeight;
+        consoleJump.hidden = true;
+
+    } else {
+
+        consoleJump.hidden = false;
+    }
+
+    updateConsoleCount();
+}
+
 function addConsoleLine(message) {
 
     if (!consoleOutput) {
         return;
     }
 
-    const line =
-        document.createElement("div");
+    consoleQueue.push({
+        time: new Date().toTimeString().slice(0, 8),
+        text: String(message)
+    });
 
-    line.textContent =
-        String(message);
-
-    consoleOutput.appendChild(line);
-
-    consoleOutput.scrollTop =
-        consoleOutput.scrollHeight;
+    /* les messages arrivent par rafales : une seule mise à jour toutes les 40 ms */
+    if (!consoleFlushTimer) {
+        consoleFlushTimer = setTimeout(flushConsole, 40);
+    }
 }
+
+consoleOutput.addEventListener("scroll", () => {
+
+    if (consoleIsAtBottom()) {
+        consoleJump.hidden = true;
+    }
+});
+
+consoleJump.addEventListener("click", () => {
+
+    consoleOutput.scrollTop = consoleOutput.scrollHeight;
+    consoleJump.hidden = true;
+});
+
+consoleFilter.addEventListener("change", () => {
+
+    consoleOutput.dataset.filter = consoleFilter.value;
+    consoleOutput.scrollTop = consoleOutput.scrollHeight;
+});
+
+function flashConsoleButton(button, text, original) {
+
+    button.textContent = text;
+
+    setTimeout(() => { button.textContent = original; }, 2500);
+}
+
+document.getElementById("consoleCopy").addEventListener("click", async (event) => {
+
+    const button = event.currentTarget;
+
+    let result = null;
+
+    try {
+        result = await window.cobbleRealm.copyConsole();
+    } catch { /* message ci-dessous */ }
+
+    flashConsoleButton(button, result && result.success ? "Copié ✓" : "Copie impossible", "Copier");
+});
+
+document.getElementById("consoleExport").addEventListener("click", async (event) => {
+
+    const button = event.currentTarget;
+
+    let result = null;
+
+    try {
+        result = await window.cobbleRealm.exportLogs();
+    } catch { /* message ci-dessous */ }
+
+    if (result && result.success) {
+        flashConsoleButton(button, "Enregistré ✓ " + result.fileName, "Exporter");
+    } else if (result && result.cancelled) {
+        flashConsoleButton(button, "Export annulé", "Exporter");
+    } else {
+        flashConsoleButton(button, "Export impossible", "Exporter");
+    }
+});
+
+document.getElementById("consoleClear").addEventListener("click", async () => {
+
+    consoleQueue = [];
+    consoleOutput.textContent = "";
+    consoleJump.hidden = true;
+    updateConsoleCount();
+
+    try {
+        await window.cobbleRealm.clearLogs();
+    } catch { /* l'affichage est déjà vide */ }
+});
+
+addConsoleLine("[CobbleRealm] Console prête.");
 
 
 if (

@@ -71,6 +71,8 @@ const makeFakeWindow = (width, height) => {
 };
 let clipboardText = "";
 let cancelCalls = 0;
+let saveDialogChoice = { canceled: true };
+const dialogCalls = [];
 let logoutCalls = 0;
 let javaFailure = null;
 let fabricFailure = null;
@@ -103,7 +105,8 @@ const fakes = {
         Menu: { setApplicationMenu() {} },
         ipcMain: { handle: (name, fn) => { ipc[name] = fn; } },
         shell: { openExternal: async (u) => { opened.push(u); }, openPath: async (p) => { openedPaths.push(p); return openPathFailure; } },
-        clipboard: { writeText: (t) => { clipboardText = t; } }
+        clipboard: { writeText: (t) => { clipboardText = t; } },
+        dialog: { showSaveDialog: async (win, options) => { dialogCalls.push(options); return saveDialogChoice; } }
     },
     "minecraft-launcher-core": { Client: FakeClient },
     "./auth": {
@@ -613,6 +616,89 @@ test("Zoom automatique : 100 % sur petit écran, grandit avec la fenêtre jusqu'
     assert.strictEqual(win.zoom, 1.5);
     fakeWindows.length = 0;
     fs.rmSync(path.join(userData, "settings.json"), { force: true });
+});
+
+/* ---------- Groupe 10 : console ---------- */
+
+const fillJournal = async (secretUser) => {
+    reset();
+    mcImpl = async (token, onLog) => {
+        onLog("[Minecraft] Profil récupéré : Bob");
+        return { success: true, accessToken: SECRET_MC, profile: { id: "3f2b8c1d-9e47-4a6b-8d15-0c7e2a9b4f61", name: "Bob" } };
+    };
+    await ipc["launch-minecraft"](trusted(sender()), { ram: 4 });
+    for (let i = 1; i <= 120; i++) theClient.emit("data", `ligne de jeu ${i}`);
+    theClient.emit("data", "Compte joueur.secret@gmail.com chargé depuis C:\\Users\\" + secretUser + "\\AppData\\Roaming\\.cobblerealm");
+    theClient.emit("data", "Setting user: Bob");
+    theClient.emit("close", 0);
+};
+
+test("Console : « Copier » copie tout le journal horodaté, sans aucune donnée sensible", async () => {
+    const user = os.userInfo().username;
+    await fillJournal(user);
+    const r = await ipc["copy-console"](trusted(sender()));
+    assert.ok(r.success);
+    assert.match(clipboardText, /=== Journal CobbleRealm ===/);
+    assert.match(clipboardText, /^\[\d\d:\d\d:\d\d\] /m, "lignes horodatées");
+    assert.ok(clipboardText.split("\n").length > 100, "bien plus que les 50 lignes d'un rapport d'erreur");
+    assert.match(clipboardText, /ligne de jeu 1\b/);
+    for (const secret of [SECRET_MC, SECRET_MS, "Bob", "joueur.secret", "3f2b8c1d-9e47", user]) {
+        assert.ok(!clipboardText.toLowerCase().includes(secret.toLowerCase()), "visible : " + secret);
+    }
+    assert.match(clipboardText, /\.cobblerealm/, "le chemin utile reste");
+
+    clipboardText = "";
+    assert.strictEqual((await ipc["copy-console"]({ sender: sender() })).success, false);
+    assert.strictEqual(clipboardText, "");
+});
+
+test("Console : « Exporter » écrit un fichier choisi par le joueur (sans donnée sensible) et ne renvoie que son nom", async () => {
+    const user = os.userInfo().username;
+    await fillJournal(user);
+    const target = path.join(tmp, "export", "mon-journal.txt");
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+
+    dialogCalls.length = 0;
+    saveDialogChoice = { canceled: false, filePath: target };
+    const r = await ipc["export-logs"](trusted(sender()));
+    assert.deepStrictEqual([r.success, r.fileName], [true, "mon-journal.txt"]);
+    assert.ok(!JSON.stringify(r).includes(path.dirname(target)), "aucun chemin renvoyé à la page");
+    assert.match(dialogCalls[0].defaultPath, /^cobblerealm-journal-\d{8}-\d{4}\.txt$/);
+    assert.deepStrictEqual(dialogCalls[0].filters[0].extensions, ["txt"]);
+
+    const content = fs.readFileSync(target, "utf8");
+    assert.match(content, /=== Journal CobbleRealm ===/);
+    assert.ok(content.split("\n").length > 100);
+    for (const secret of [SECRET_MC, SECRET_MS, "Bob", "joueur.secret", "3f2b8c1d-9e47", user]) {
+        assert.ok(!content.toLowerCase().includes(secret.toLowerCase()), "visible dans le fichier : " + secret);
+    }
+
+    // annulation : aucun fichier, aucune erreur
+    fs.rmSync(target);
+    saveDialogChoice = { canceled: true };
+    const cancelled = await ipc["export-logs"](trusted(sender()));
+    assert.deepStrictEqual([cancelled.success, cancelled.cancelled], [false, true]);
+    assert.ok(!fs.existsSync(target));
+
+    // dossier impossible à écrire : message simple
+    saveDialogChoice = { canceled: false, filePath: path.join(tmp, "n-existe-pas", "x.txt") };
+    const failed = await ipc["export-logs"](trusted(sender()));
+    assert.deepStrictEqual([failed.success, failed.error], [false, "Impossible d'enregistrer le fichier."]);
+
+    dialogCalls.length = 0;
+    assert.strictEqual((await ipc["export-logs"]({ sender: sender() })).success, false);
+    assert.strictEqual(dialogCalls.length, 0, "origine inconnue : aucune boîte de dialogue");
+    saveDialogChoice = { canceled: true };
+});
+
+test("Console : « Effacer » vide aussi le journal gardé par le launcher", async () => {
+    await fillJournal("x");
+    assert.ok((await ipc["clear-logs"](trusted(sender()))).success);
+    await ipc["copy-console"](trusted(sender()));
+    assert.match(clipboardText, /\(aucune ligne\)/);
+    assert.ok(!/ligne de jeu/.test(clipboardText));
+    clipboardText = "";
+    assert.strictEqual((await ipc["clear-logs"]({ sender: sender() })).success, false);
 });
 
 /* ---------- Groupe 9 : paramètres ---------- */

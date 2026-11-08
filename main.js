@@ -4,7 +4,8 @@ const {
     Menu,
     ipcMain,
     shell,
-    clipboard
+    clipboard,
+    dialog
 } = require("electron");
 
 const path = require("path");
@@ -460,6 +461,8 @@ let lastError = null;                  // { code, message } de la dernière erre
 
 
 /* Garde une ligne du journal pour le rapport de support (jetons masqués dès l'entrée). */
+const clockTime = () => new Date().toTimeString().slice(0, 8);
+
 function pushLog(text) {
 
     for (const raw of String(text).split(/\r?\n/)) {
@@ -467,7 +470,7 @@ function pushLog(text) {
         const line = redactSecrets(raw).trim();
 
         if (line) {
-            recentLogs.push(line.slice(0, 400));
+            recentLogs.push(`[${clockTime()}] ${line.slice(0, 400)}`);
         }
     }
 
@@ -1651,6 +1654,87 @@ handle(
                 error: "Impossible de copier le rapport."
             };
         }
+    }
+);
+
+
+/* ==============================
+   CONSOLE : COPIER, EXPORTER, EFFACER
+   (le journal est déjà débarrassé des jetons ; données personnelles masquées à l'export)
+============================== */
+
+function fullJournalReport() {
+
+    const installed = getUpdater().status();
+    const versions = resolveVersions(null);
+
+    return buildReport({
+        info: {
+            launcher: app.getVersion(),
+            pack: installed.version,
+            minecraft: versions.minecraft,
+            fabric: versions.fabricLoader,
+            java: String(versions.java),
+            ramAllocatedGb: readLauncherSettings().ram
+        },
+        error: lastError,
+        logs: recentLogs,
+        maxLines: MAX_LOG_LINES,
+        title: "=== Journal CobbleRealm ===",
+        privateStrings: [...privateStrings]
+    });
+}
+
+handle(
+    "copy-console",
+
+    async () => {
+
+        clipboard.writeText(fullJournalReport());
+
+        return { success: true, lines: recentLogs.length };
+    }
+);
+
+handle(
+    "export-logs",
+
+    async (event) => {
+
+        const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "").replace(/^(\d{8})(\d{4})$/, "$1-$2");
+
+        const choice = await dialog.showSaveDialog(getMainWindow() || undefined, {
+            title: "Enregistrer le journal",
+            defaultPath: `cobblerealm-journal-${stamp}.txt`,
+            filters: [{ name: "Fichier texte", extensions: ["txt"] }]
+        });
+
+        if (choice.canceled || !choice.filePath) {
+            return { success: false, cancelled: true };
+        }
+
+        try {
+
+            fs.writeFileSync(choice.filePath, fullJournalReport(), "utf8");
+
+            /* on ne renvoie que le nom du fichier : jamais le chemin (il contient le nom d'utilisateur) */
+            return { success: true, fileName: path.basename(choice.filePath) };
+
+        } catch {
+
+            return { success: false, error: "Impossible d'enregistrer le fichier." };
+        }
+    }
+);
+
+handle(
+    "clear-logs",
+
+    async () => {
+
+        recentLogs.length = 0;
+
+        return { success: true };
     }
 );
 

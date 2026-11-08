@@ -103,14 +103,14 @@ function formatDate(date) {
  * @param {string[]} [p.logs] dernières lignes du journal
  * @param {string[]} [p.privateStrings]
  */
-function buildReport({ info = {}, error = null, logs = [], privateStrings = [], now = new Date(), system = {} }) {
+function buildReport({ info = {}, error = null, logs = [], privateStrings = [], now = new Date(), system = {}, maxLines = 50, title = "=== Rapport CobbleRealm ===" }) {
 
     const options = { privateStrings, userNames: currentUserNames() };
     const totalGb = system.totalMemGb !== undefined ? system.totalMemGb : Math.round(os.totalmem() / 1024 ** 3);
     const windows = system.windows || `${os.type()} ${os.release()} (${os.arch()})`;
 
     const lines = [
-        "=== Rapport CobbleRealm ===",
+        title,
         `Date : ${formatDate(now)}`,
         `Launcher : ${info.launcher || "inconnu"}`,
         `Pack : ${info.pack ? "v" + info.pack : "non installé"}`,
@@ -125,7 +125,7 @@ function buildReport({ info = {}, error = null, logs = [], privateStrings = [], 
 
     lines.push("", "--- Dernières lignes du journal ---");
 
-    const recent = logs.slice(-50);
+    const recent = logs.slice(-maxLines);
     lines.push(...(recent.length ? recent : ["(aucune ligne)"]));
 
     return sanitize(lines.join("\n"), options);

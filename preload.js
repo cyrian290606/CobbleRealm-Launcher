@@ -257,6 +257,11 @@ contextBridge.exposeInMainWorld(
                 "open-game-folder"
             ),
 
+        /* Console */
+        copyConsole: () => ipcRenderer.invoke("copy-console"),
+        exportLogs: () => ipcRenderer.invoke("export-logs"),
+        clearLogs: () => ipcRenderer.invoke("clear-logs"),
+
         /* Annule le téléchargement en cours (les fichiers déjà reçus sont conservés) */
         cancelUpdate: () =>
             ipcRenderer.invoke(

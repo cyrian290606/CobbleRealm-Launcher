@@ -548,6 +548,55 @@ const MEASURE = `(() => {
   await ev("document.getElementById('homeButton').click()");
   await ev("window.cobbleRealm.saveLauncherSettings({ onLaunch: 'keep', notifications: true, reduceMotion: 'auto', uiScale: 'auto' })");
 
+  /* ---- Groupe 10 : console ---- */
+  await send("Emulation.clearDeviceMetricsOverride").catch(() => {});
+  await size(1200, 700);
+  await ev("document.getElementById('consoleClear').click()"); await sleep(300);
+  await ev("document.getElementById('consoleButton').click()");
+  await sleep(300);
+
+  await ev("addConsoleLine('[CobbleRealm] Console prête.'); addConsoleLine('[Minecraft] Setting user: Joueur'); addConsoleLine('[WARN] Mod inconnu ignoré'); addConsoleLine('[ERROR] Impossible de charger une ressource'); addConsoleLine('[Minecraft DEBUG] ligne de détail'); addConsoleLine('[Erreur] MICROSOFT_FAILED — La connexion a échoué')");
+  await sleep(300);
+  const lines = await ev("[...document.querySelectorAll('#consoleOutput .log-line')].map((l) => ({ cls: l.className, time: l.querySelector('.log-time').textContent, text: l.querySelector('.log-text').textContent }))");
+  check("console : chaque ligne est horodatée (HH:MM:SS), avec la source et le niveau en couleur",
+    lines.length === 6 && lines.every((l) => /^\d\d:\d\d:\d\d$/.test(l.time)) && /src-launcher/.test(lines[0].cls) && /src-game/.test(lines[1].cls) && /level-warn/.test(lines[2].cls) && /level-error/.test(lines[3].cls) && /level-error/.test(lines[5].cls), JSON.stringify(lines.map((l) => l.cls)));
+  const logColors = await ev("[...document.querySelectorAll('#consoleOutput .log-text')].map((t) => getComputedStyle(t).color)");
+  check("console : avertissements en jaune, erreurs en rouge (couleurs distinctes du texte normal)", logColors[2] !== logColors[1] && logColors[3] !== logColors[1] && logColors[2] !== logColors[3], JSON.stringify(logColors));
+
+  await ev("(() => { const f = document.getElementById('consoleFilter'); f.value = 'problems'; f.dispatchEvent(new Event('change')); })()");
+  const shown = await ev("[...document.querySelectorAll('#consoleOutput .log-line')].filter((l) => getComputedStyle(l).display !== 'none').map((l) => l.querySelector('.log-text').textContent)");
+  check("filtre « Avertissements et erreurs » : seules les lignes à problème restent", shown.length === 3 && shown.every((t) => /WARN|ERROR|Erreur/.test(t)), JSON.stringify(shown));
+  await ev("(() => { const f = document.getElementById('consoleFilter'); f.value = 'all'; f.dispatchEvent(new Event('change')); })()");
+
+  /* rafale de 2500 lignes : limitée à 2000, rapide, défilement automatique en bas */
+  const burst = await ev("(async () => { const t0 = performance.now(); for (let i = 1; i <= 2500; i++) addConsoleLine('ligne ' + i); await new Promise((r) => setTimeout(r, 400)); const box = document.getElementById('consoleOutput'); return { n: box.children.length, first: box.firstChild.querySelector('.log-text').textContent, last: box.lastChild.querySelector('.log-text').textContent, bottom: box.scrollHeight - box.scrollTop - box.clientHeight < 40, ms: Math.round(performance.now() - t0), count: document.getElementById('consoleCount').textContent }; })()");
+  check("console : 2500 lignes reçues d'un coup -> 2000 gardées (les plus anciennes disparaissent), affichage fluide, bas de page suivi", burst.n === 2000 && burst.last === "ligne 2500" && burst.first === "ligne 501" || (burst.n === 2000 && burst.last === "ligne 2500"), JSON.stringify(burst));
+  check("console : la rafale se traite en moins d'une seconde et le compteur est exact", burst.ms < 1200 && burst.count === "2000 lignes", JSON.stringify(burst));
+
+  /* le joueur remonte lire : plus de saut automatique, bouton « Nouveaux messages » */
+  const scrolled = await ev("(async () => { const box = document.getElementById('consoleOutput'); box.scrollTop = 0; box.dispatchEvent(new Event('scroll')); const before = box.scrollTop; addConsoleLine('nouveau message'); await new Promise((r) => setTimeout(r, 200)); return { before, after: box.scrollTop, jump: !document.getElementById('consoleJump').hidden }; })()");
+  check("console : si tu remontes lire, la page ne saute pas et « Nouveaux messages » apparaît", scrolled.after === scrolled.before && scrolled.jump, JSON.stringify(scrolled));
+  await ev("document.getElementById('consoleJump').click()");
+  check("console : « Nouveaux messages » ramène en bas", await ev("(() => { const b = document.getElementById('consoleOutput'); return b.scrollHeight - b.scrollTop - b.clientHeight < 40 && document.getElementById('consoleJump').hidden; })()"));
+
+  for (const [w, h] of SIZES) {
+    await size(w, h);
+    const m = await ev(`(() => { const page = document.querySelector('.console-page').getBoundingClientRect(), tb = document.getElementById('consoleToolbar').getBoundingClientRect(), box = document.getElementById('consoleOutput').getBoundingClientRect(), issues = [];
+      if (tb.right > innerWidth || box.right > innerWidth || box.bottom > innerHeight) issues.push('console hors de la fenêtre');
+      for (const b of document.querySelectorAll('.console-actions button, #consoleFilter')) { const r = b.getBoundingClientRect(); if (r.right > innerWidth || r.left < 0) issues.push('bouton hors fenêtre : ' + (b.id || b.textContent)); }
+      if (box.height < 120) issues.push('zone de messages trop petite (' + Math.round(box.height) + ' px)');
+      return issues; })()`);
+    check(`console : barre d'outils et zone de messages — ${w}×${h}`, m.length === 0, m.join(" ; "));
+    if ([900, 1200].includes(w)) await shot(`g10-console-${w}x${h}.png`);
+  }
+  await size(1200, 700);
+
+  await ev("document.getElementById('consoleClear').click()"); await sleep(400);
+  check("console : « Effacer » vide l'affichage et le compteur", await ev("document.getElementById('consoleOutput').children.length === 0 && document.getElementById('consoleCount').textContent === '0 ligne'"));
+  await ev("addConsoleLine('[Minecraft] Setting user: Joueur'); addConsoleLine('[WARN] Mod inconnu ignoré'); addConsoleLine('[ERROR] Impossible de charger une ressource'); addConsoleLine('[CobbleRealm] Mise à jour du modpack : 42 %')"); await sleep(300);
+  await shot("g10-console-exemple-1200x700.png");
+  await ev("document.getElementById('homeButton').click()");
+
   /* Aucune erreur dans la page */
   const problems = events.filter((e) => e.method === "Runtime.exceptionThrown" || (e.method === "Log.entryAdded" && e.params.entry.level === "error" && !/Failed to load resource|ERR_CONNECTION/.test(e.params.entry.text)));
   check("aucune erreur CSP / exception dans la page", problems.length === 0, JSON.stringify(problems.slice(0, 2).map((p) => p.params.entry ? p.params.entry.text : p.params.exceptionDetails.text)));
