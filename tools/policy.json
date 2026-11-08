@@ -1,0 +1,84 @@
+{
+  "_aide": [
+    "Ce fichier décide ce que le launcher fait de chaque fichier du modpack. Modifiable à volonté.",
+    "Catégories : 'managed' = toujours aligné sur le serveur (écrase), 'default' = copié seulement s'il n'existe pas,",
+    "'preserved' = jamais publié, jamais touché par le launcher.",
+    "Pour chaque fichier, la PREMIÈRE règle (dans l'ordre ci-dessous) dont un motif correspond l'emporte.",
+    "Motifs : '*' = tout sauf '/', '**' = tout y compris '/', '?' = un caractère. Insensible à la casse.",
+    "Un motif sans '/' ne s'applique qu'à la racine du dossier de jeu (ex. 'options.txt'). Pour tout niveau : '**/*.log'.",
+    "Un fichier qui ne correspond à rien reçoit 'fallbackPolicy' (par défaut 'default' : jamais écrasé, c'est le plus prudent)."
+  ],
+
+  "minecraft": "1.21.1",
+  "fabricLoader": "0.18.4",
+  "java": 21,
+  "recommendedRamGb": 6,
+
+  "hosting": {
+    "repo": "cyrian290606/CobbleRealm-Pack",
+    "tagPrefix": "pack-",
+    "maxAssetsPerRelease": 900
+  },
+
+  "strictDirs": ["mods"],
+
+  "fallbackPolicy": "default",
+
+  "rules": [
+    {
+      "policy": "preserved",
+      "patterns": [
+        "saves/**",
+        "screenshots/**",
+        "logs/**",
+        "crash-reports/**",
+        "backups/**",
+        "shaderpacks/**",
+        "**/*.log",
+        "**/*.disabled",
+        ".staging/**",
+        ".removed/**",
+        "runtime/**",
+        "versions/**",
+        "libraries/**",
+        "assets/**",
+        "natives/**",
+        "lock.json",
+        "version.json",
+        "launcher_profiles.json",
+        "usercache.json",
+        "usernamecache.json",
+        "realms_persistence.json"
+      ]
+    },
+    {
+      "policy": "default",
+      "patterns": [
+        "options.txt",
+        "optionsof.txt",
+        "servers.dat",
+        "servers.dat_old",
+        "config/sodium-options.json",
+        "config/iris.properties",
+        "config/xaero*/**",
+        "config/journeymap/**",
+        "config/jade/**",
+        "config/emi.css"
+      ]
+    },
+    {
+      "policy": "managed",
+      "patterns": [
+        "mods/**",
+        "config/**",
+        "defaultconfigs/**",
+        "resourcepacks/**",
+        "datapacks/**",
+        "global_packs/**",
+        "scripts/**",
+        "fancymenu_data/**",
+        "slideshow/**"
+      ]
+    }
+  ]
+}

@@ -15,6 +15,7 @@ Launcher Electron (Windows uniquement, UI et logs en français) pour le modpack 
 - `npm start` : lance l'app en dev (`electron .`).
 - `npm run build` : crée l'installeur NSIS Windows dans `dist/` (electron-builder).
 - `node test/phase1.test.js` : tests automatiques (faux Electron/MCLC/auth, sans réseau ni compte Microsoft).
+- `node tools/publish.js <dossierSource> --version x.y.z` : prépare une publication du modpack (manifest schéma v2 + fichiers nommés par leur SHA-256 + `UPLOAD.md`). Catégories dans [tools/policy.json](tools/policy.json) (`managed` / `default` / `preserved`). Ne publie rien, n'écrit jamais dans le dossier source. `--dry-run` pour simuler, `--check <manifest>` pour vérifier que les URL répondent. Tests : `node test/publish.test.js`.
 - Il n'y a ni linter, ni étape de build du frontend (pas de bundler, JS CommonJS brut).
 - Pour tester `npm start` sans toucher à l'installation réelle, définir `APPDATA` vers un dossier temporaire. Pour tester le build sans écraser `dist/` : `npm run build -- --config.directories.output=build-out`.
 
