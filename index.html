@@ -1261,6 +1261,17 @@
     Vérification de la version...
                 </span>
 
+<div id="launcherProgress" style="
+    display: none;
+    margin-left: 21px;
+    margin-top: 4px;
+    font-size: 14px;
+    font-weight: 800;
+    color: #63e7ff;
+">
+    0%
+</div>
+
             </div>
 
 
@@ -1936,6 +1947,11 @@ const launcherUpdateStatus =
         "launcherUpdateStatus"
     );
 
+const launcherProgress =
+    document.getElementById(
+        "launcherProgress"
+    );
+
 setPlayState(
     "VÉRIFICATION...",
     "⏳",
@@ -1974,55 +1990,77 @@ if (
 
             if (data.status === "downloading") {
 
-                launcherReady = false;
+    launcherReady = false;
 
-                setPlayState(
-                    "TÉLÉCHARGEMENT...",
-                    "⏳",
-                    true
-                );
+    if (launcherProgress) {
+        launcherProgress.style.display = "block";
+        launcherProgress.textContent = "0%";
+    }
 
-                return;
-            }
+    setPlayState(
+        "TÉLÉCHARGEMENT...",
+        "⏳",
+        true
+    );
+
+    return;
+}
+
+if (data.status === "download-progress") {
+
+    if (launcherProgress) {
+        launcherProgress.style.display = "block";
+        launcherProgress.textContent = data.message;
+    }
+
+    return;
+}
 
             if (data.status === "installing") {
 
-                launcherReady = false;
+    launcherReady = false;
 
-                setPlayState(
-                    "INSTALLATION...",
-                    "⏳",
-                    true
-                );
+    if (launcherProgress) {
+        launcherProgress.style.display = "block";
+        launcherProgress.textContent = "0%";
+    }
 
-                return;
-            }
+    setPlayState(
+        "INSTALLATION...",
+        "⏳",
+        true
+    );
+
+    return;
+}
+
+if (data.status === "install-progress") {
+
+    if (launcherProgress) {
+        launcherProgress.style.display = "block";
+        launcherProgress.textContent = data.message;
+    }
+
+    return;
+}
 
             if (data.status === "ready") {
 
-                launcherReady = true;
+    launcherReady = true;
 
-                setPlayState(
-                    "JOUER",
-                    "▶",
-                    false
-                );
+    if (launcherProgress) {
+        launcherProgress.style.display = "none";
+        launcherProgress.textContent = "0%";
+    }
 
-                return;
-            }
+    setPlayState(
+        "JOUER",
+        "▶",
+        false
+    );
 
-            if (data.status === "error") {
-
-                launcherReady = false;
-
-                setPlayState(
-                    "ERREUR DE MISE À JOUR",
-                    "⚠",
-                    true
-                );
-
-                return;
-            }
+    return;
+}
         }
     );
 }

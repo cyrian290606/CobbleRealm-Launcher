@@ -382,7 +382,8 @@ async function checkCobbleRealmUpdate() {
 
 async function downloadCobbleRealmPack(
     url,
-    destination
+    destination,
+    onProgress = null
 ) {
 
     console.log(
@@ -457,16 +458,20 @@ async function downloadCobbleRealmPack(
 
                 if (percent !== lastPercent) {
 
-                    lastPercent = percent;
+    lastPercent = percent;
 
-                    console.log(
-                        `[CobbleRealm] Téléchargement : ${percent}%`
-                    );
-                }
-            }
-        }
+    console.log(
+        `[CobbleRealm] Téléchargement : ${percent}%`
+    );
 
-        await new Promise(
+    if (typeof onProgress === "function") {
+        onProgress(percent);
+    }
+}
+}
+}
+
+await new Promise(
             (resolve, reject) => {
 
                 fileStream.end(
@@ -512,325 +517,358 @@ async function downloadLatestCobbleRealmPack(
 
     if (
         !manifest ||
-        !manifest.download
+        !Array.isArray(manifest.downloads) ||
+        manifest.downloads.length === 0
     ) {
-
         throw new Error(
             "Aucune URL de téléchargement dans le manifest CobbleRealm."
         );
     }
 
-    const tempZipPath =
-        path.join(
+    const zipPaths = [];
+const totalParts = manifest.downloads.length;
+
+    for (let i = 0; i < manifest.downloads.length; i++) {
+
+        const tempZipPath = path.join(
             app.getPath("temp"),
-            "CobbleRealm-update.zip"
+            `CobbleRealm-update-part${i + 1}.zip`
         );
 
-    await downloadCobbleRealmPack(
-        manifest.download,
-        tempZipPath
-    );
+        // Supprime une éventuelle ancienne tentative
+        if (fs.existsSync(tempZipPath)) {
+            fs.rmSync(tempZipPath, {
+                force: true
+            });
+        }
 
-    return tempZipPath;
+        console.log(
+            `[CobbleRealm] Téléchargement partie ${i + 1}/${manifest.downloads.length}...`
+        );
+
+        await downloadCobbleRealmPack(
+    manifest.downloads[i],
+    tempZipPath,
+    (partPercent) => {
+
+        const globalPercent =
+            Math.floor(
+                (
+                    (i * 100) +
+                    partPercent
+                ) / totalParts
+            );
+
+        sendLauncherUpdateStatus(
+            "download-progress",
+            `${globalPercent}%`
+        );
+    }
+);
+
+        zipPaths.push(tempZipPath);
+    }
+
+    return zipPaths;
 }
 
 
 async function extractCobbleRealmPack(
-    zipPath
+    zipPaths
 ) {
 
     const gameRoot =
         getCobbleRealmRoot();
 
+    if (!fs.existsSync(gameRoot)) {
+        fs.mkdirSync(gameRoot, {
+            recursive: true
+        });
+    }
+
     if (
-        !fs.existsSync(
-            gameRoot
-        )
+        !Array.isArray(zipPaths) ||
+        zipPaths.length === 0
     ) {
-
-        fs.mkdirSync(
-            gameRoot,
-            {
-                recursive: true
-            }
+        throw new Error(
+            "Aucune archive CobbleRealm à installer."
         );
     }
 
     console.log(
-        "[CobbleRealm] Extraction du pack..."
+        `[CobbleRealm] Vérification de ${zipPaths.length} archive(s)...`
     );
 
+    // ==============================
+    // TEST DE TOUTES LES ARCHIVES
+    // ==============================
 
-// ==============================
-// TEST DU ZIP AVANT INSTALLATION
-// ==============================
+    for (let i = 0; i < zipPaths.length; i++) {
 
-const tempExtractPath = path.join(
-    app.getPath("temp"),
-    "CobbleRealm-extract-test"
-);
-
-if (fs.existsSync(tempExtractPath)) {
-    fs.rmSync(
-        tempExtractPath,
-        {
-            recursive: true,
-            force: true
-        }
-    );
-}
-
-fs.mkdirSync(
-    tempExtractPath,
-    {
-        recursive: true
-    }
-);
-
-console.log(
-    "[CobbleRealm] Vérification du ZIP..."
-);
-
-try {
-
-    await extract(
-    zipPath,
-    {
-        dir: tempExtractPath
-    }
-);
-
-// ==============================
-// SUPPRESSION DES MODS INCOMPATIBLES
-// ==============================
-
-const incompatibleMods = [
-    "seasonhud-fabric-1.21.1-1.13.8.jar"
-];
-
-for (const modFile of incompatibleMods) {
-
-    const modPath = path.join(
-        gameRoot,
-        "mods",
-        modFile
-    );
-
-    if (fs.existsSync(modPath)) {
-
-        console.log(
-            `[CobbleRealm] Suppression du mod incompatible : ${modFile}`
+        const tempExtractPath = path.join(
+            app.getPath("temp"),
+            `CobbleRealm-extract-test-${i + 1}`
         );
 
-        fs.rmSync(
-            modPath,
-            {
+        fs.rmSync(tempExtractPath, {
+            recursive: true,
+            force: true
+        });
+
+        fs.mkdirSync(tempExtractPath, {
+            recursive: true
+        });
+
+        try {
+
+            console.log(
+                `[CobbleRealm] Vérification ZIP ${i + 1}/${zipPaths.length}...`
+            );
+
+            await extract(
+                zipPaths[i],
+                {
+                    dir: tempExtractPath
+                }
+            );
+
+            console.log(
+                `[CobbleRealm] ZIP ${i + 1} valide.`
+            );
+
+        } catch (error) {
+
+            console.error(
+                `[CobbleRealm] ZIP ${i + 1} invalide :`,
+                error
+            );
+
+            throw new Error(
+                `La partie ${i + 1} de la mise à jour est corrompue. Installation annulée.`
+            );
+
+        } finally {
+
+            fs.rmSync(tempExtractPath, {
+                recursive: true,
                 force: true
-            }
-        );
-    }
-}
-
-    console.log(
-        "[CobbleRealm] ZIP vérifié avec succès."
-    );
-
-} catch (error) {
-
-    console.error(
-        "[CobbleRealm] ZIP invalide ou corrompu :",
-        error
-    );
-
-    fs.rmSync(
-        tempExtractPath,
-        {
-            recursive: true,
-            force: true
+            });
         }
-    );
-
-    throw new Error(
-        "La mise à jour téléchargée est corrompue. Installation annulée."
-    );
-}
-
-fs.rmSync(
-    tempExtractPath,
-    {
-        recursive: true,
-        force: true
     }
-);
 
 
+    // ==============================
+    // SAUVEGARDE DES FICHIERS JOUEUR
+    // ==============================
 
-const oldResourcePacks = [
-    "CCC_MAL_1.6.4.1",
-    "MysticMons_v3.2.1 (modified)"
-];
+    const preservedFiles = [
+        "options.txt",
+        "optionsof.txt",
+        "servers.dat"
+    ];
 
-for (const pack of oldResourcePacks) {
-    const packPath = path.join(gameRoot, "resourcepacks", pack);
+    const preservedData = new Map();
 
-console.log("[CobbleRealm] Test pack :", packPath, "Existe :", fs.existsSync(packPath));
-    
-if (fs.existsSync(packPath)) {
-        console.log("[CobbleRealm] Suppression ancien resource pack :", pack);
-        fs.rmSync(packPath, { recursive: true, force: true });
-    }
-}    
+    for (const fileName of preservedFiles) {
 
-// ==============================
-// SAUVEGARDE DES FICHIERS JOUEUR
-// ==============================
-
-const preservedFiles = [
-    "options.txt",
-    "optionsof.txt",
-    "servers.dat"
-];
-
-const preservedData = new Map();
-
-for (const fileName of preservedFiles) {
-
-    const filePath =
-        path.join(
+        const filePath = path.join(
             gameRoot,
             fileName
         );
 
-    if (
-        fs.existsSync(
-            filePath
-        )
-    ) {
+        if (fs.existsSync(filePath)) {
+
+            try {
+
+                preservedData.set(
+                    fileName,
+                    fs.readFileSync(filePath)
+                );
+
+                console.log(
+                    "[CobbleRealm] Sauvegarde fichier joueur :",
+                    fileName
+                );
+
+            } catch (error) {
+
+                console.error(
+                    "[CobbleRealm] Erreur sauvegarde fichier joueur :",
+                    fileName,
+                    error
+                );
+            }
+        }
+    }
+
+
+    // ==============================
+    // NETTOYAGE DE L'ANCIEN MODPACK
+    // ==============================
+
+    const foldersToSync = [
+        "mods",
+        "config",
+        "defaultconfigs",
+        "resourcepacks",
+        "shaderpacks",
+        "datapacks",
+        "global_packs",
+        "scripts",
+        "fancymenu_data",
+        "slideshow"
+    ];
+
+    for (const folderName of foldersToSync) {
+
+        const folderPath = path.join(
+            gameRoot,
+            folderName
+        );
+
+        if (fs.existsSync(folderPath)) {
+
+            console.log(
+                `[CobbleRealm] Suppression ancien dossier : ${folderName}`
+            );
+
+            fs.rmSync(folderPath, {
+                recursive: true,
+                force: true
+            });
+        }
+    }
+
+
+    // ==============================
+// EXTRACTION DES PARTIES
+// ==============================
+
+for (let i = 0; i < zipPaths.length; i++) {
+
+    console.log(
+        `[CobbleRealm] Installation partie ${i + 1}/${zipPaths.length}...`
+    );
+
+    // Progression avant extraction de la partie
+    const startPercent =
+        Math.floor(
+            (i / zipPaths.length) * 100
+        );
+
+    sendLauncherUpdateStatus(
+        "install-progress",
+        `${startPercent}%`
+    );
+
+    await extract(
+        zipPaths[i],
+        {
+            dir: gameRoot
+        }
+    );
+
+    // Progression après extraction de la partie
+    const endPercent =
+        Math.floor(
+            ((i + 1) / zipPaths.length) * 100
+        );
+
+    sendLauncherUpdateStatus(
+        "install-progress",
+        `${endPercent}%`
+    );
+}
+
+
+    // ==============================
+    // RESTAURATION DES FICHIERS JOUEUR
+    // ==============================
+
+    for (const [fileName, data] of preservedData.entries()) {
+
+        const filePath = path.join(
+            gameRoot,
+            fileName
+        );
 
         try {
 
-            preservedData.set(
-                fileName,
-                fs.readFileSync(
-                    filePath
-                )
+            fs.writeFileSync(
+                filePath,
+                data
             );
 
             console.log(
-                "[CobbleRealm] Sauvegarde fichier joueur :",
+                "[CobbleRealm] Fichier joueur restauré :",
                 fileName
             );
 
         } catch (error) {
 
             console.error(
-                "[CobbleRealm] Erreur sauvegarde fichier joueur :",
+                "[CobbleRealm] Erreur restauration fichier joueur :",
                 fileName,
                 error
             );
         }
     }
-}
 
 
-// ==============================
-// SYNCHRONISATION DU MODPACK
-// ==============================
+    // ==============================
+    // SUPPRESSION DES MODS INCOMPATIBLES
+    // ==============================
 
-const foldersToSync = [
-    "mods",
-    "config",
-    "defaultconfigs",
-    "resourcepacks",
-    "shaderpacks",
-    "datapacks",
-    "global_packs",
-    "scripts",
-    "fancymenu_data",
-    "slideshow"
-];
+    const incompatibleMods = [
+        "seasonhud-fabric-1.21.1-1.13.8.jar"
+    ];
 
-for (const folderName of foldersToSync) {
+    for (const modFile of incompatibleMods) {
 
-    const folderPath = path.join(
-        gameRoot,
-        folderName
-    );
-
-    if (fs.existsSync(folderPath)) {
-
-        console.log(
-            `[CobbleRealm] Suppression ancien dossier : ${folderName}`
-        );
-
-        fs.rmSync(
-            folderPath,
-            {
-                recursive: true,
-                force: true
-            }
-        );
-
-        console.log(
-            `[CobbleRealm] Dossier synchronisé : ${folderName}`
-        );
-    }
-}
-
-
-// ==============================
-// EXTRACTION DU PACK
-// ==============================
-
-await extract(
-    zipPath,
-    {
-        dir: gameRoot
-    }
-);
-
-
-// ==============================
-// RESTAURATION DES FICHIERS JOUEUR
-// ==============================
-
-for (
-    const [
-        fileName,
-        data
-    ] of preservedData.entries()
-) {
-
-    const filePath =
-        path.join(
+        const modPath = path.join(
             gameRoot,
-            fileName
+            "mods",
+            modFile
         );
 
-    try {
+        if (fs.existsSync(modPath)) {
 
-        fs.writeFileSync(
-            filePath,
-            data
-        );
+            console.log(
+                `[CobbleRealm] Suppression du mod incompatible : ${modFile}`
+            );
 
-        console.log(
-            "[CobbleRealm] Fichier joueur restauré :",
-            fileName
-        );
-
-    } catch (error) {
-
-        console.error(
-            "[CobbleRealm] Erreur restauration fichier joueur :",
-            fileName,
-            error
-        );
+            fs.rmSync(modPath, {
+                force: true
+            });
+        }
     }
-}
+
+
+    // ==============================
+    // NETTOYAGE DES ZIP TEMPORAIRES
+    // ==============================
+
+    for (const zipPath of zipPaths) {
+
+        try {
+
+            fs.rmSync(zipPath, {
+                force: true
+            });
+
+        } catch (error) {
+
+            console.warn(
+                "[CobbleRealm] Impossible de supprimer le ZIP temporaire :",
+                zipPath,
+                error
+            );
+        }
+    }
+
 
     console.log(
-        "[CobbleRealm] Extraction terminée :",
+        "[CobbleRealm] Installation complète terminée :",
         gameRoot
     );
 
@@ -2557,37 +2595,32 @@ app.whenReady().then(
                 );
 
 
-                const zipPath =
-                    await downloadLatestCobbleRealmPack(
-                        result.manifest
-                    );
+                const zipPaths =
+    await downloadLatestCobbleRealmPack(
+        result.manifest
+    );
 
+console.log(
+    "[CobbleRealm] ZIP téléchargés :",
+    zipPaths
+);
 
-                console.log(
-                    "[CobbleRealm] ZIP téléchargé :",
-                    zipPath
-                );
+/*
+ * INSTALLATION
+ */
 
+sendLauncherUpdateStatus(
+    "installing",
+    "INSTALLATION..."
+);
 
-                /*
-                 * INSTALLATION
-                 */
+await extractCobbleRealmPack(
+    zipPaths
+);
 
-                sendLauncherUpdateStatus(
-                    "installing",
-                    "INSTALLATION..."
-                );
-
-
-                await extractCobbleRealmPack(
-                    zipPath
-                );
-
-
-                writeLocalCobbleRealmVersion(
-                    result.remoteVersion
-                );
-
+writeLocalCobbleRealmVersion(
+    result.remoteVersion
+);
 
                 console.log(
                     "[CobbleRealm] Pack installé avec succès."
