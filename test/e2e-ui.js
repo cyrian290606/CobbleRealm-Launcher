@@ -95,7 +95,7 @@ const MEASURE = `(() => {
     ["annonce courte", "void 0"],
     ["annonce très longue", `renderNews(${JSON.stringify(LONG_NEWS)})`],
     ["erreur affichée (4 boutons, message long)", `(() => { document.getElementById("updateBarWrap").hidden = true; showError({ title: "Connexion à Minecraft impossible", message: "Les services Minecraft ont refusé la connexion (code 403). Essaie de te reconnecter avec ton compte, ou demande de laide à léquipe CobbleRealm sur Discord.", code: "MINECRAFT_DENIED", actions: ["switchAccount", "retry", "copy", "help"] }); })()`],
-    ["téléchargement en cours", `(() => { document.getElementById('updateBarWrap').hidden = false; document.getElementById('updateBar').style.width = '42%'; document.getElementById('updateDetail').textContent = 'cobblemon-fabric-1.6.1+1.21.1.jar — 38/212 fichiers — 412,3 Mo / 1,92 Go — 18,4 Mo/s'; document.getElementById('launcherUpdateStatus').textContent = 'Téléchargement... 42%'; })()`]
+    ["téléchargement en cours", `(() => { document.getElementById('updateBarWrap').hidden = false; setProgressFill(42); document.getElementById('updateDetail').textContent = 'cobblemon-fabric-1.6.1+1.21.1.jar — 38/212 fichiers — 412,3 Mo / 1,92 Go — 18,4 Mo/s'; document.getElementById('launcherUpdateStatus').textContent = 'Téléchargement... 42%'; })()`]
   ];
 
   for (const [label, setup] of scenarios) {
@@ -229,7 +229,7 @@ const MEASURE = `(() => {
   /* ---- Groupe 4 : zone de téléchargement ---- */
   const STATES = {
     "inactif": "hideError(); document.getElementById('updateBarWrap').hidden = true; document.getElementById('updateWarning').hidden = true",
-    "téléchargement": "hideError(); document.getElementById('updateWarning').hidden = true; document.getElementById('updateBarWrap').hidden = false; document.getElementById('progressTitle').textContent = 'Téléchargement... 42 %'; document.getElementById('progressEta').textContent = '≈ 3 min restantes'; document.getElementById('updateBar').style.width = '42%'; document.getElementById('updateDetail').textContent = 'cobblemon-fabric-1.6.1+1.21.1-un-nom-de-fichier-tres-long.jar · 38/212 fichiers · 412,3 Mo / 1,92 Go · 18,4 Mo/s'",
+    "téléchargement": "hideError(); document.getElementById('updateWarning').hidden = true; document.getElementById('updateBarWrap').hidden = false; document.getElementById('progressTitle').textContent = 'Téléchargement... 42 %'; document.getElementById('progressEta').textContent = '≈ 3 min restantes'; setProgressFill(42); document.getElementById('updateDetail').textContent = 'cobblemon-fabric-1.6.1+1.21.1-un-nom-de-fichier-tres-long.jar · 38/212 fichiers · 412,3 Mo / 1,92 Go · 18,4 Mo/s'",
     "avertissement": "hideError(); document.getElementById('updateBarWrap').hidden = true; document.getElementById('updateWarning').textContent = 'Hors-ligne : lancement de la version installée (v10).'; document.getElementById('updateWarning').hidden = false",
     "annulation (information)": "document.getElementById('updateBarWrap').hidden = true; document.getElementById('updateWarning').hidden = true; showError({ title: 'Mise à jour annulée', message: 'Mise à jour annulée. Tu pourras la reprendre quand tu veux : les fichiers déjà téléchargés sont conservés.', code: 'UPDATE_CANCELLED', severity: 'info', actions: ['retry'] })"
   };
@@ -596,6 +596,63 @@ const MEASURE = `(() => {
   await ev("addConsoleLine('[Minecraft] Setting user: Joueur'); addConsoleLine('[WARN] Mod inconnu ignoré'); addConsoleLine('[ERROR] Impossible de charger une ressource'); addConsoleLine('[CobbleRealm] Mise à jour du modpack : 42 %')"); await sleep(300);
   await shot("g10-console-exemple-1200x700.png");
   await ev("document.getElementById('homeButton').click()");
+
+  /* ---- Groupe 11 : animations ---- */
+  await size(1200, 700);
+  await ev("applyMotionSetting('off'); document.getElementById('homeButton').click(); setPlayState('JOUER','▶',false); hideError(); document.getElementById('updateBarWrap').hidden = true");
+  const secs = (v) => parseFloat(v) * (/ms$/.test(v) ? 0.001 : 1);
+  const probe = () => ev(`(() => { const g = (el, pseudo) => getComputedStyle(el, pseudo || null);
+    const sp = document.createElement('span'); sp.className = 'play-icon play-spinner'; document.body.appendChild(sp);
+    const r = { motion: document.documentElement.dataset.motion, view: g(document.getElementById('settingsView')).animationName, viewDur: g(document.getElementById('settingsView')).animationDuration,
+      glow: g(document.getElementById('playButton'), '::after').animationName, glowCount: g(document.getElementById('playButton'), '::after').animationIterationCount,
+      spinner: g(sp).animationName, spinnerDur: g(sp).animationDuration, shimmer: g(document.getElementById('updateBar'), '::after').animationName, shimmerDur: g(document.getElementById('updateBar'), '::after').animationDuration };
+    sp.remove(); return r; })()`);
+
+  const full = await probe();
+  check("animations complètes : changement de page, respiration du bouton JOUER, reflet de la barre, spinner",
+    full.motion === "full" && full.view === "cr-view-in" && full.glow === "cr-glow" && full.glowCount === "infinite" && full.spinner === "cr-spin" && full.shimmer === "cr-shimmer", JSON.stringify(full));
+
+  await ev("setPlayState('VÉRIFICATION...','⏳',true)");
+  check("le bouton JOUER ne « respire » que lorsqu'il est prêt", (await probe()).glow === "none");
+  await ev("setPlayState('JOUER','▶',false)");
+
+  await ev("applyMotionSetting('on')");
+  const reduced = await probe();
+  check("réduire les animations : plus aucun mouvement (≤ 1 ms, une seule fois), sauf le spinner qui continue, plus lent",
+    reduced.motion === "reduce" && secs(reduced.viewDur) <= 0.0011 && reduced.glowCount === "1" && secs(reduced.shimmerDur) <= 0.0011 && reduced.spinner === "cr-spin" && secs(reduced.spinnerDur) >= 1.5, JSON.stringify(reduced));
+
+  /* « Automatique » suit le réglage Windows (simulé par le navigateur) */
+  await ev("applyMotionSetting('auto')");
+  const autoNormal = await ev("document.documentElement.dataset.motion");
+  await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
+  await sleep(300);
+  const autoReduced = await ev("document.documentElement.dataset.motion");
+  await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "no-preference" }] });
+  await sleep(300);
+  const autoBack = await ev("document.documentElement.dataset.motion");
+  check("mode « Automatique » : suit Windows (animations réduites quand Windows le demande, rétablies ensuite)", autoNormal === "full" && autoReduced === "reduce" && autoBack === "full", [autoNormal, autoReduced, autoBack].join(" > "));
+  await send("Emulation.setEmulatedMedia", { features: [] });
+
+  /* depuis la page Paramètres : réglage enregistré et appliqué tout de suite */
+  await ev("document.getElementById('settingsButton').click()"); await sleep(300);
+  await ev("(() => { const m = document.getElementById('motionSelect'); m.value = 'on'; m.dispatchEvent(new Event('change')); })()"); await sleep(500);
+  const viaPage = await ev("document.documentElement.dataset.motion");
+  await ev("loadSettingsPage()"); await sleep(400);
+  const kept = await ev("({ motion: document.documentElement.dataset.motion, select: document.getElementById('motionSelect').value })");
+  check("réglage « Réduire les animations » : appliqué tout de suite et retrouvé après rechargement", viaPage === "reduce" && kept.motion === "reduce" && kept.select === "on", JSON.stringify(kept));
+  await ev("(() => { const m = document.getElementById('motionSelect'); m.value = 'off'; m.dispatchEvent(new Event('change')); })()"); await sleep(400);
+  await ev("document.getElementById('homeButton').click()");
+
+  /* coût réel : 2 s d'animations simultanées (respiration, reflet, spinner) sans recalculs de mise en page */
+  await ev("applyMotionSetting('off'); setPlayState('JOUER','▶',false); document.getElementById('updateBarWrap').hidden = false; setProgressFill(35)");
+  await send("Performance.enable");
+  const metrics = async () => Object.fromEntries((await send("Performance.getMetrics")).result.metrics.map((m) => [m.name, m.value]));
+  await sleep(500);
+  const m0 = await metrics(); await sleep(2000); const m1 = await metrics();
+  const layouts = m1.LayoutCount - m0.LayoutCount, styles = m1.RecalcStyleCount - m0.RecalcStyleCount, script = m1.ScriptDuration - m0.ScriptDuration;
+  check("performance : 2 s d'animations = presque aucune mise en page recalculée et aucun script", layouts <= 4 && script < 0.05, `mises en page : ${layouts}, recalculs de style : ${styles}, script : ${(script * 1000).toFixed(1)} ms`);
+  await ev("document.getElementById('updateBarWrap').hidden = true");
+  await shot("g11-animations-1200x700.png");
 
   /* Aucune erreur dans la page */
   const problems = events.filter((e) => e.method === "Runtime.exceptionThrown" || (e.method === "Log.entryAdded" && e.params.entry.level === "error" && !/Failed to load resource|ERR_CONNECTION/.test(e.params.entry.text)));

@@ -20,6 +20,8 @@ Ce fichier présente, version après version, ce qui change pour les joueurs.
 - Bouton « Copier les informations » dans « À propos » pour faciliter l'aide de l'équipe, sans donnée personnelle.
 - Console plus lisible : chaque message est horodaté et coloré selon sa gravité (avertissements en jaune, erreurs en rouge), avec un filtre « Avertissements et erreurs ».
 - Nouveaux boutons dans la console : « Copier » et « Exporter » enregistrent le journal pour l'envoyer à l'équipe (sans donnée personnelle), « Effacer » le vide.
+- Animations discrètes et fluides : les pages apparaissent en fondu, les fenêtres et les menus s'ouvrent en douceur, le bouton JOUER « respire » doucement quand tout est prêt et un reflet parcourt la barre de téléchargement.
+- Nouvelle option « Réduire les animations » dans les Paramètres. Par défaut, le launcher suit le réglage de Windows.
 - Le temps restant estimé s'affiche pendant les téléchargements.
 - Tu peux annuler un téléchargement : ce qui est déjà reçu est conservé, et il reprend ensuite sans tout recommencer.
 - Nouveau menu du compte Microsoft : tu peux changer de compte ou te déconnecter depuis le launcher.

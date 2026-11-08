@@ -1744,6 +1744,109 @@ kbd {
 }
 
 /* =========================
+   ANIMATIONS (discrètes : transform et opacity uniquement)
+========================= */
+
+@keyframes cr-view-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes cr-fade {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+@keyframes cr-modal-in {
+    from { opacity: 0; transform: scale(0.97) translateY(6px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes cr-slide-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes cr-pop {
+    from { opacity: 0; transform: scale(0.97); }
+    to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes cr-shimmer {
+    to { transform: translateX(100%); }
+}
+
+@keyframes cr-glow {
+    0%, 100% { opacity: 0; }
+    50%      { opacity: 0.55; }
+}
+
+/* changement de page */
+.main {
+    animation: cr-view-in 0.2s ease-out;
+}
+
+/* fenêtres */
+.microsoft-modal.show {
+    animation: cr-fade 0.15s ease-out;
+}
+
+.microsoft-modal.show .modal-card {
+    animation: cr-modal-in 0.18s ease-out;
+}
+
+/* messages et menus */
+.error-box:not([hidden]) {
+    animation: cr-slide-in 0.2s ease-out;
+}
+
+.account-menu:not([hidden]) {
+    transform-origin: bottom center;
+    animation: cr-pop 0.14s ease-out;
+}
+
+/* le bouton JOUER « respire » doucement quand tout est prêt */
+.play-button {
+    position: relative;
+}
+
+.play-button::after {
+    content: "";
+
+    position: absolute;
+    inset: -3px;
+
+    border-radius: 16px;
+
+    box-shadow: 0 0 22px 4px rgba(74, 180, 255, 0.8);
+
+    opacity: 0;
+    pointer-events: none;
+}
+
+.play-button[data-state="ready"]:not(:hover):not(:focus-visible)::after {
+    animation: cr-glow 3.2s ease-in-out infinite;
+}
+
+/*
+ * Réduire les animations (réglage du launcher, ou réglage Windows en mode « Automatique ») :
+ * plus aucun mouvement, sauf l'indicateur de chargement du bouton JOUER qui reste (plus lent).
+ */
+html[data-motion="reduce"] *,
+html[data-motion="reduce"] *::before,
+html[data-motion="reduce"] *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+}
+
+html[data-motion="reduce"] .play-spinner {
+    animation-duration: 1.6s !important;
+    animation-iteration-count: infinite !important;
+}
+
+/* =========================
    INFORMATIONS : SERVEUR, CHANGELOG, CHARGEMENT
 ========================= */
 
@@ -1890,14 +1993,34 @@ kbd {
 }
 
 .progress-fill {
-    width: 0%;
+    position: relative;
+
+    width: 100%;
     height: 100%;
+
+    overflow: hidden;
 
     border-radius: 4px;
 
     background: linear-gradient(90deg, #22d5f3, #3087ff 55%, #a94cff);
 
-    transition: width 0.2s ease-out;
+    /* on anime la transformation (très léger), jamais la largeur */
+    transform: scaleX(0);
+    transform-origin: left center;
+    transition: transform 0.2s ease-out;
+}
+
+/* reflet qui avance : preuve visuelle que le téléchargement progresse */
+.progress-fill::after {
+    content: "";
+
+    position: absolute;
+    inset: 0;
+
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+
+    transform: translateX(-100%);
+    animation: cr-shimmer 1.6s linear infinite;
 }
 
 .progress-foot {
@@ -3798,6 +3921,15 @@ function formatEta(seconds) {
     return "≈ " + hours + " h " + String(minutes).padStart(2, "0") + " min restantes";
 }
 
+/* Avancement de la barre : transformation (animation légère), valeur gardée pour les lecteurs d'écran. */
+function setProgressFill(percent) {
+
+    const value = Math.max(0, Math.min(100, Number(percent) || 0));
+
+    updateBar.style.transform = "scaleX(" + (value / 100) + ")";
+    updateBar.dataset.value = String(value);
+}
+
 function formatBytes(bytes) {
 
     if (bytes >= 1024 ** 3) {
@@ -3814,7 +3946,7 @@ function formatBytes(bytes) {
 function resetUpdateUi() {
 
     updateBarWrap.hidden = true;
-    updateBar.style.width = "0%";
+    setProgressFill(0);
     updateDetail.textContent = "";
     hideError();
     updateWarning.hidden = true;
@@ -3883,7 +4015,7 @@ if (window.cobbleRealm && window.cobbleRealm.onUpdateProgress) {
             }
 
             updateBarWrap.hidden = false;
-            updateBar.style.width = percent + "%";
+            setProgressFill(percent);
 
             progressTrack.setAttribute("aria-valuenow", String(percent));
             progressTitle.textContent = "Téléchargement... " + percent + " %";
@@ -3905,7 +4037,7 @@ if (window.cobbleRealm && window.cobbleRealm.onUpdateProgress) {
 
         if (e.step === "apply") {
 
-            updateBar.style.width = "100%";
+            setProgressFill(100);
             progressTitle.textContent = "Installation...";
             progressEta.textContent = "";
             launcherUpdateStatus.textContent = "Installation...";
@@ -5146,6 +5278,29 @@ const FALLBACK_NEWS = {
     if (window.cobbleRealm && window.cobbleRealm.onChangelogUpdated) {
         window.cobbleRealm.onChangelogUpdated(renderChangelog);
     }
+
+    /* =========================
+       ANIMATIONS : RÉGLAGE « RÉDUIRE »
+    ========================== */
+
+    const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let motionSetting = "auto";
+
+    /* "on" = réduire, "off" = animations complètes, "auto" = suit Windows */
+    function applyMotionSetting(value) {
+
+        motionSetting = ["on", "off", "auto"].includes(value) ? value : "auto";
+
+        const reduce =
+            motionSetting === "on" ||
+            (motionSetting === "auto" && motionQuery.matches);
+
+        document.documentElement.dataset.motion = reduce ? "reduce" : "full";
+    }
+
+    motionQuery.addEventListener("change", () => applyMotionSetting(motionSetting));
+
+    applyMotionSetting("auto");
 
     /* =========================
        ACCESSIBILITÉ : CLAVIER ET RACCOURCIS
