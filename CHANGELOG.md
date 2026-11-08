@@ -8,6 +8,7 @@ Ce fichier présente, version après version, ce qui change pour les joueurs.
 
 ### Nouveautés
 - Nouveau système de mise à jour : le launcher ne télécharge plus que les fichiers qui ont changé, au lieu de tout retélécharger.
+- Première installation nettement plus rapide : les milliers de petits fichiers du modpack sont maintenant téléchargés par lots, ce qui réduit fortement le temps d'attente, surtout avec une connexion lente ou éloignée.
 - Si tu as déjà CobbleRealm installé, tes fichiers sont reconnus : il n'est pas nécessaire de tout retélécharger.
 - Nouveau bouton « Réparer l'installation » : il retrouve et remplace les fichiers manquants ou abîmés.
 - Nouveau bouton « Réessayer » quand une mise à jour échoue.

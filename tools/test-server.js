@@ -154,6 +154,7 @@ async function serveFolder(dir, { port = 8787, cutAfter = 0, speedKb = 0, signKe
     let missing = 0;
 
     for (const f of manifest.files) {
+        if (!f.url) continue;          // fichier d'un bundle : pas d'URL propre
         const assetName = decodeURIComponent(f.url.split("/").pop());
         const source = assets.get(assetName);
         f.url = `${base}/files/${encodeURIComponent(assetName)}`;
