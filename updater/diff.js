@@ -11,10 +11,35 @@
 const fs = require("fs");
 const path = require("path");
 const { resolveInside } = require("./manifest");
-const { hashFile, mapLimit } = require("./util");
+const { hashFile, mapLimit, normalizedPropertiesHash, NORMALIZABLE_MAX_BYTES } = require("./util");
 const { UpdateError } = require("./errors");
 
 const lowerKey = (rel) => rel.toLowerCase();
+
+/*
+ * Pourquoi un fichier doit être (re)téléchargé. Sert au journal de diagnostic.
+ *   absent             : le fichier n'existe pas
+ *   remplace           : un dossier occupe la place du fichier
+ *   nouvelle-version   : le modpack a changé ce fichier depuis la dernière installation
+ *   modifie-localement : le modpack n'a PAS changé ce fichier, mais il a été modifié sur place (jeu, mod ou joueur)
+ *   non-reference      : contenu différent et fichier inconnu du suivi d'installation (migration, suivi perdu)
+ */
+const REASON_TEXT = {
+    "absent": "absent",
+    "remplace": "remplacé par un dossier",
+    "nouvelle-version": "nouvelle version dans le modpack",
+    "modifie-localement": "modifié sur place (jeu, mod ou joueur)",
+    "non-reference": "différent et non suivi par l'installation"
+};
+
+function classify(file, record, st) {
+
+    if (!st) return "absent";
+    if (!st.isFile()) return "remplace";
+    if (record && record.sha256 !== file.sha256) return "nouvelle-version";
+    if (record && record.sha256 === file.sha256) return "modifie-localement";
+    return "non-reference";
+}
 
 /* Liste récursive des .jar d'un dossier (chemins relatifs avec '/'). */
 function listJars(root, dirRel) {
@@ -66,7 +91,7 @@ async function buildPlan({ manifest, gameRoot, lock, repair = false, hashCache =
         try { st = fs.lstatSync(dest); } catch { /* absent */ }
 
         if (!st || !st.isFile()) {
-            needsDownload.push({ file, reason: st ? "remplacé" : "absent" });
+            needsDownload.push({ file, reason: st ? "remplacé" : "absent", code: classify(file, records[file.path], st && { isFile: () => false }), localSize: st ? st.size : null });
             continue;
         }
 
@@ -81,8 +106,8 @@ async function buildPlan({ manifest, gameRoot, lock, repair = false, hashCache =
             continue;
         }
 
-        if (st.size !== file.size) {
-            needsDownload.push({ file, reason: "modifié" });
+        if (st.size !== file.size && !(file.nsha256 && st.size <= NORMALIZABLE_MAX_BYTES)) {
+            needsDownload.push({ file, reason: "modifié", code: classify(file, record, st), localSize: st.size });
             continue;
         }
 
@@ -109,8 +134,14 @@ async function buildPlan({ manifest, gameRoot, lock, repair = false, hashCache =
                 path: file.path, sha256: sha, size: st.size,
                 mtimeMs: Math.floor(st.mtimeMs), policy: file.policy
             });
+        } else if (file.nsha256 && st.size <= NORMALIZABLE_MAX_BYTES && normalizedPropertiesHash(fs.readFileSync(dest)) === file.nsha256) {
+            /* Même contenu utile (seule la ligne de date a changé) : conforme. On enregistre le hash du manifest. */
+            adopted.push({
+                path: file.path, sha256: file.sha256, size: st.size,
+                mtimeMs: Math.floor(st.mtimeMs), policy: file.policy
+            });
         } else {
-            needsDownload.push({ file, reason: "corrompu ou modifié" });
+            needsDownload.push({ file, reason: "corrompu ou modifié", code: classify(file, records[file.path], st), localSize: st.size });
         }
 
         onScan(++done, toHash.length);
@@ -171,9 +202,16 @@ async function buildPlan({ manifest, gameRoot, lock, repair = false, hashCache =
 
     const uniqueDownloads = [...bySha.values()];
 
+    /* Journal de diagnostic : un élément par fichier à (re)télécharger, avec la raison. */
+    const diagnostic = needsDownload.map((n) => ({
+        path: n.file.path, code: n.code, reason: REASON_TEXT[n.code], policy: n.file.policy,
+        expectedSize: n.file.size, localSize: n.localSize
+    }));
+
     return {
         needsDownload,
         uniqueDownloads,
+        diagnostic,
         adopted,
         unchanged,
         toRemove,
@@ -185,4 +223,4 @@ async function buildPlan({ manifest, gameRoot, lock, repair = false, hashCache =
     };
 }
 
-module.exports = { buildPlan, listJars };
+module.exports = { buildPlan, listJars, REASON_TEXT };

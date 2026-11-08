@@ -392,6 +392,40 @@ function sendLauncherUpdateStatus(status, message, extra = {}) {
 }
 
 
+/*
+ * Journal de diagnostic des mises à jour : quels fichiers sont (re)téléchargés, et pourquoi.
+ * Écrit dans userData/update-diagnostic.txt (écrasé à chaque vérification) + résumé dans la console du launcher.
+ * Ne contient que des chemins relatifs au dossier de jeu, jamais de chemin Windows ni de donnée personnelle.
+ */
+function writeUpdateDiagnostic({ repair, version, installedVersion, entries }) {
+
+    const counts = {};
+    for (const entry of entries) counts[entry.code] = (counts[entry.code] || 0) + 1;
+
+    const summary = Object.entries(counts).map(([code, n]) => `${n} ${code}`).join(", ");
+
+    if (entries.length) {
+        pushLog(`[Mise à jour] ${repair ? "Réparation" : "Vérification"} : ${entries.length} fichier(s) à télécharger (${summary}). Détail : update-diagnostic.txt`);
+    }
+
+    try {
+        const lines = [
+            `Journal de diagnostic — ${new Date().toISOString()}`,
+            `Mode : ${repair ? "réparation (tout est revérifié)" : "mise à jour"} · modpack installé : ${installedVersion || "aucun"} → serveur : ${version}`,
+            `Fichiers à télécharger : ${entries.length}${summary ? " (" + summary + ")" : ""}`,
+            ""
+        ];
+
+        for (const entry of entries) {
+            lines.push(`${entry.code.padEnd(18)} | ${entry.policy.padEnd(8)} | ${entry.path} | local : ${entry.localSize === null ? "absent" : entry.localSize + " o"} · attendu : ${entry.expectedSize} o | ${entry.reason}`);
+        }
+
+        fs.writeFileSync(path.join(app.getPath("userData"), "update-diagnostic.txt"), lines.join("\n") + "\n", "utf8");
+
+    } catch { /* le journal est un confort : jamais bloquant */ }
+}
+
+
 let updater = null;
 
 function getUpdater() {
@@ -402,7 +436,8 @@ function getUpdater() {
             gameRoot: getCobbleRealmRoot(),
             manifestUrl: COBBLEREALM_MANIFEST_URL,
             allowLocal: DEV_MODE,
-            onProgress: (event) => broadcast("update-progress", event)
+            onProgress: (event) => broadcast("update-progress", event),
+            onDiagnostic: writeUpdateDiagnostic
         });
     }
 

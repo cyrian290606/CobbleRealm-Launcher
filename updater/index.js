@@ -24,7 +24,7 @@ const STAGING = ".staging";
 
 function createUpdater({
     gameRoot, manifestUrl, onProgress = () => {}, allowLocal = false,
-    fetchOptions = {}, downloadOptions = {}, hooks = {}, now = () => Date.now()
+    fetchOptions = {}, downloadOptions = {}, hooks = {}, now = () => Date.now(), onDiagnostic = () => {}
 }) {
 
     const stagingDir = path.join(gameRoot, STAGING);
@@ -122,6 +122,8 @@ function createUpdater({
             const manifest = await getManifest();
             const installed = installedInfo();
             const plan = await makePlan(manifest, { repair, signal: controller.signal });
+
+            try { onDiagnostic({ repair, version: manifest.version, installedVersion: installed.version, entries: plan.diagnostic }); } catch { /* le journal ne doit jamais casser la mise à jour */ }
 
             const mustWriteLock = !plan.isEmpty || plan.adopted.length > 0 || !installed.valid || installed.version !== manifest.version;
 

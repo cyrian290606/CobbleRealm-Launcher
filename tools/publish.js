@@ -29,6 +29,7 @@ const ALLOWED_URL_HOSTS = ["github.com"];
 
 /* Mêmes règles que le launcher : une seule définition (updater/manifest.js). */
 const { validateRelPath } = require("../updater/manifest.js");
+const { normalizedPropertiesHash, NORMALIZABLE, NORMALIZABLE_MAX_BYTES } = require("../updater/util.js");
 
 function globToRegExp(pattern) {
 
@@ -224,8 +225,13 @@ async function buildManifest(options) {
         const size = fs.statSync(file.abs).size;
         const sha256 = await hashFile(file.abs);
 
+        /* .properties : hash du contenu utile (voir updater/util.js), pour ne pas retélécharger un fichier que le jeu a seulement redaté. */
+        const nsha256 = NORMALIZABLE.test(file.rel) && size <= NORMALIZABLE_MAX_BYTES
+            ? normalizedPropertiesHash(fs.readFileSync(file.abs))
+            : undefined;
+
         onProgress(++done, toPublish.length, file.rel);
-        return { ...file, size, sha256 };
+        return { ...file, size, sha256, nsha256 };
     });
 
     /* 3. Fichiers déjà en ligne (versions archivées) */
@@ -269,7 +275,7 @@ async function buildManifest(options) {
             url = `${releaseBase}/${asset.tag}/${encodeURIComponent(assetName)}`;
         }
 
-        files.push({ path: file.rel, size: file.size, sha256: file.sha256, url, policy: file.policy });
+        files.push({ path: file.rel, size: file.size, sha256: file.sha256, ...(file.nsha256 ? { nsha256: file.nsha256 } : {}), url, policy: file.policy });
     }
 
     const manifest = {

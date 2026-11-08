@@ -122,6 +122,87 @@ test("Fichiers VIDES (taille 0, ex. ignore.txt) : installés, jamais une erreur 
     assert.ok(exists(path.join(env.root, "config/compat/ignore.txt")));
 }));
 
+test("Journal de diagnostic : chaque fichier à télécharger a sa raison (absent, nouvelle version, modifié sur place, non suivi)", () => withEnv(async (env) => {
+    env.publish(V1(), "1.0.0");
+    await env.updater().sync();
+
+    const journals = [];
+    const make = () => env.updater({ onDiagnostic: (d) => journals.push(d) });
+
+    /* a.jar supprimé ; main.json modifié à taille égale (jeu/mod) ; le modpack change b.jar */
+    fs.rmSync(path.join(env.root, "mods/a.jar"));
+    fs.writeFileSync(path.join(env.root, "config/main.json"), "{\"v\":9}");
+    env.publish({ ...V1(), "mods/b.jar": blob("B2") }, "1.0.1");
+    await make().sync();
+
+    const byPath = Object.fromEntries(journals[0].entries.map((e) => [e.path, e.code]));
+    assert.strictEqual(byPath["mods/a.jar"], "absent");
+    assert.strictEqual(byPath["config/main.json"], "modifie-localement");
+    assert.strictEqual(byPath["mods/b.jar"], "nouvelle-version");
+    assert.strictEqual(Object.keys(byPath).length, 3, JSON.stringify(byPath));
+    assert.strictEqual(journals[0].repair, false);
+
+    /* sans suivi d'installation (lock perdu) : « non suivi » */
+    fs.rmSync(path.join(env.root, "lock.json"), { force: true });
+    fs.rmSync(path.join(env.root, "lock.prev.json"), { force: true });
+    fs.writeFileSync(path.join(env.root, "config/main.json"), "{\"v\":8}");
+    journals.length = 0;
+    await make().sync();
+    assert.strictEqual(journals[0].entries.find((e) => e.path === "config/main.json").code, "non-reference");
+
+    /* un journal qui plante ne casse jamais la mise à jour */
+    fs.writeFileSync(path.join(env.root, "config/main.json"), "{\"v\":7}");
+    const r = await env.updater({ onDiagnostic: () => { throw new Error("boum"); } }).sync();
+    assert.ok(r.ok);
+}));
+
+test(".properties redaté par le jeu : aucun retéléchargement ; un vrai changement de valeur est bien détecté", () => withEnv(async (env) => {
+    const { normalizedPropertiesHash } = require("../updater/util");
+    const props = (date, value = "true") => `#Mod config\n#${date}\nzoom=1\nactive=${value}\n`;
+    const nsha = (text) => normalizedPropertiesHash(Buffer.from(text));
+    const publish = (text, version) => {
+        const m = env.publish({ "config/mod.properties": text, "mods/a.jar": blob("A1") }, version);
+        m.files.find((f) => f.path === "config/mod.properties").nsha256 = nsha(text);
+        return m;
+    };
+
+    publish(props("Tue Oct 27 20:41:51 CET 2026"), "1.0.0");
+    await env.updater().sync();
+    const file = path.join(env.root, "config/mod.properties");
+
+    /* le jeu redate le fichier (même taille, puis taille différente, puis lignes dans un autre ordre) */
+    for (const rewritten of [
+        props("Sun Nov 08 21:53:03 CET 2026"),
+        props("Sun Nov 8 21:53:03 CET 2026"),
+        "#autre\n#Sun Nov 08 21:53:03 CET 2026\nactive=true\nzoom=1\n"
+    ]) {
+        fs.writeFileSync(file, rewritten);
+        env.resetRequests();
+        const journals = [];
+        const r = await env.updater({ onDiagnostic: (d) => journals.push(d) }).sync();
+        assert.ok(r.ok);
+        assert.strictEqual(r.downloaded, 0, "aucun retéléchargement");
+        assert.strictEqual(journals[0].entries.length, 0);
+        assert.strictEqual(fs.readFileSync(file, "utf8"), rewritten, "le fichier du jeu n'est pas écrasé");
+        assert.strictEqual(env.fileRequests().length, 0);
+    }
+
+    /* même chose en réparation (rehash complet) */
+    const rep = await env.updater().repair();
+    assert.strictEqual(rep.downloaded, 0);
+
+    /* un vrai changement de valeur reste détecté et remplacé */
+    fs.writeFileSync(file, props("Sun Nov 08 21:53:03 CET 2026", "false"));
+    const fixed = await env.updater().sync();
+    assert.strictEqual(fixed.downloaded, 1);
+    assert.ok(read(file).includes("active=true"));
+
+    /* un manifest sans nsha256 (ancien) se comporte comme avant */
+    env.publish({ "config/mod.properties": props("Tue Oct 27 20:41:51 CET 2026"), "mods/a.jar": blob("A1") }, "1.0.1");
+    fs.writeFileSync(file, props("Sun Nov 08 21:53:03 CET 2026"));
+    assert.strictEqual((await env.updater().sync()).downloaded, 1);
+}));
+
 /* ---------------- migration ---------------- */
 
 test("Migration d'une installation existante sans lock.json (aucun retéléchargement inutile)", () => withEnv(async (env) => {

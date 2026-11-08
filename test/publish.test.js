@@ -116,6 +116,21 @@ test("Manifest v2 : contenu, catégories, préservés non publiés", async () =>
     assert.deepStrictEqual(publish.validateManifest(manifest), []);
 });
 
+test(".properties : le manifest porte le hash du contenu utile (nsha256), pas les autres fichiers", async () => {
+    const { normalizedPropertiesHash } = require("../updater/util");
+    const text = "#Mod\n#Tue Oct 27 20:41:51 CET 2026\nb=2\na=1\n";
+    const src = makeSource("src-props", { "config/mod.properties": text });
+    const { manifest } = await build(src, "1.0.0", path.join(tmp, "m-vide"));
+    const byPath = Object.fromEntries(manifest.files.map((f) => [f.path, f]));
+    assert.strictEqual(byPath["config/mod.properties"].nsha256, normalizedPropertiesHash(Buffer.from(text)));
+    assert.strictEqual(byPath["config/mod.properties"].sha256, sha(text));
+    assert.strictEqual(byPath["mods/alpha.jar"].nsha256, undefined);
+    assert.deepStrictEqual(publish.validateManifest(manifest), []);
+    // la date seule ne change pas le hash utile ; une valeur oui
+    assert.strictEqual(normalizedPropertiesHash(Buffer.from("#x\n#Sun Nov 08 21:53:03 CET 2026\na=1\nb=2\n")), byPath["config/mod.properties"].nsha256);
+    assert.notStrictEqual(normalizedPropertiesHash(Buffer.from("#x\na=1\nb=3\n")), byPath["config/mod.properties"].nsha256);
+});
+
 test("Dédoublonnage : deux fichiers identiques = un seul envoi", async () => {
     const src = makeSource("src-dup", { "mods/copie.jar": "alpha-v1" });
     const { manifest, newAssets } = await build(src, "1.0.0", path.join(tmp, "m-vide"));

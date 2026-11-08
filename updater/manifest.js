@@ -119,6 +119,7 @@ function validateManifest(manifest, { allowLocal = false } = {}) {
 
             if (!/^[0-9a-f]{64}$/.test(f.sha256 || "")) add(`${f.path} : sha256 invalide`);
             if (!Number.isSafeInteger(f.size) || f.size < 0) add(`${f.path} : taille invalide`);
+            if (f.nsha256 !== undefined && !/^[0-9a-f]{64}$/.test(f.nsha256)) add(`${f.path} : nsha256 invalide`);
             if (!["managed", "default"].includes(f.policy)) add(`${f.path} : catégorie invalide`);
 
             try { checkUrl(f.url, { allowedHosts: FILE_HOSTS, allowLocal }); }

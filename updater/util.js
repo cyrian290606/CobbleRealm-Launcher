@@ -72,4 +72,24 @@ async function renameRetry(from, to, { fsImpl = fs.promises, delays = RETRY_DELA
     }
 }
 
-module.exports = { hashFile, mapLimit, sleep, renameRetrySync, renameRetry };
+/*
+ * Contenu « normalisé » d'un fichier .properties : sans les lignes de commentaire, sans les espaces de fin
+ * et avec les lignes triées. Java réécrit ces fichiers à chaque démarrage du jeu en changeant seulement la ligne
+ * de date (« #Sun Nov 08 21:53:03 CET 2026 ») : le contenu utile est identique.
+ * Le tri n'est appliqué que s'il n'y a aucune ligne continuée par « \\ » (le sens dépendrait de l'ordre).
+ */
+const NORMALIZABLE = /\.properties$/i;
+const NORMALIZABLE_MAX_BYTES = 1024 * 1024;
+
+function normalizedPropertiesHash(buffer) {
+
+    const lines = buffer.toString("utf8").replace(/^\uFEFF/, "").split(/\r?\n/)
+        .map((line) => line.replace(/\s+$/, ""))
+        .filter((line) => line !== "" && !/^\s*[#!]/.test(line));
+
+    if (!lines.some((line) => line.endsWith("\\"))) lines.sort();
+
+    return crypto.createHash("sha256").update(lines.join("\n"), "utf8").digest("hex");
+}
+
+module.exports = { hashFile, mapLimit, sleep, renameRetrySync, renameRetry, normalizedPropertiesHash, NORMALIZABLE, NORMALIZABLE_MAX_BYTES };
