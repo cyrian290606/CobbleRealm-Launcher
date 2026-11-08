@@ -549,6 +549,14 @@ function buildErrorPayload(step, error) {
 
     pushLog(`[Erreur] ${described.code} — ${described.message}`);
 
+    /* Cause technique, pour le journal de la console et le rapport (déjà nettoyé par sanitize/redactSecrets) : */
+    const cause = error && (error.cause || error);
+    const detail = cause && [cause.httpStatus && `HTTP ${cause.httpStatus}`, cause.code, cause.message].filter(Boolean).join(" · ");
+
+    if (detail && detail !== described.message) {
+        pushLog(`[Détail] ${sanitize(redactSecrets(String(detail)), { privateStrings: [...privateStrings], userNames: currentUserNames() }).slice(0, 300)}`);
+    }
+
     return described;
 }
 
@@ -2525,6 +2533,11 @@ app.whenReady().then(
             describeCheck(check),
             { updateAvailable: Boolean(check.updateAvailable) }
         );
+
+        if (DEV_MODE) {
+            pushLog(`[Mode test] manifest : ${COBBLEREALM_MANIFEST_URL} · dossier de jeu : ${getCobbleRealmRoot()}`);
+            console.log("[CobbleRealm] MODE TEST — manifest :", COBBLEREALM_MANIFEST_URL, "— jeu :", getCobbleRealmRoot());
+        }
 
         console.log(
             "[CobbleRealm] Vérification terminée :",

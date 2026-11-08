@@ -59,6 +59,7 @@ Ce fichier présente, version après version, ce qui change pour les joueurs.
 - Sur les petites fenêtres, le titre CobbleRealm n'est plus coupé et l'annonce ne recouvre plus le bouton JOUER.
 - L'installation de Java ou d'un mod pouvait échouer à cause de l'antivirus Windows, qui bloque parfois un fichier pendant un instant : le launcher réessaie maintenant automatiquement.
 - L'indicateur « Serveur EN LIGNE » s'affichait toujours, même quand le serveur était éteint : il n'apparaît plus tant que l'état réel du serveur n'est pas connu.
+- La première installation du modpack s'arrêtait avec « Une erreur inattendue est survenue » à cause de certains fichiers vides : c'est corrigé.
 - Une ancienne annonce (« V4 ») pouvait s'afficher brièvement au démarrage : c'est corrigé.
 - Il n'était pas possible d'annuler une connexion Microsoft en cours : c'est désormais possible à tout moment.
 - Un message de développement incompréhensible (« APPID EN ATTENTE ») qui pouvait s'afficher sur le bouton JOUER a été supprimé : il est remplacé par une explication claire.

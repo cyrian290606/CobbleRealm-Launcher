@@ -106,6 +106,22 @@ test("Première installation propre", () => withEnv(async (env) => {
     assert.strictEqual(env.fileRequests().length, 0);
 }));
 
+test("Fichiers VIDES (taille 0, ex. ignore.txt) : installés, jamais une erreur ; le modpack réel en contient des centaines", () => withEnv(async (env) => {
+    env.publish({ ...V1(), "config/compat/ignore.txt": "", "config/compat/autre.txt": "", "mods/vide.jar": "" }, "1.0.0");
+    const r = await env.updater().sync();
+    assert.ok(r.ok, JSON.stringify(r));
+    for (const p of ["config/compat/ignore.txt", "config/compat/autre.txt", "mods/vide.jar"]) {
+        assert.ok(exists(path.join(env.root, p)) && fs.statSync(path.join(env.root, p)).size === 0, `${p} doit exister, vide`);
+    }
+    assert.ok(!exists(path.join(env.root, ".staging")), "staging nettoyé");
+
+    // un fichier vide supprimé est détecté et remis par la réparation
+    fs.rmSync(path.join(env.root, "config/compat/ignore.txt"));
+    const repaired = await env.updater().repair();
+    assert.ok(repaired.ok, JSON.stringify(repaired));
+    assert.ok(exists(path.join(env.root, "config/compat/ignore.txt")));
+}));
+
 /* ---------------- migration ---------------- */
 
 test("Migration d'une installation existante sans lock.json (aucun retéléchargement inutile)", () => withEnv(async (env) => {

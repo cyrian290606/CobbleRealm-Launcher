@@ -160,6 +160,9 @@ async function downloadOne(item, ctx) {
                 }
             }
 
+            /* Fichier vide (taille 0) : rien à télécharger, mais le fichier doit exister pour être vérifié puis déplacé. */
+            if (item.size === 0) await fsp.writeFile(partPath, "");
+
             const digest = hash.digest("hex");
 
             if (digest !== item.sha256) {
