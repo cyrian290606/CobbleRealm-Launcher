@@ -70,6 +70,7 @@ const makeFakeWindow = (width, height) => {
     return win;
 };
 let clipboardText = "";
+const notifications = [];
 let cancelCalls = 0;
 let saveDialogChoice = { canceled: true };
 const dialogCalls = [];
@@ -106,6 +107,8 @@ const fakes = {
         ipcMain: { handle: (name, fn) => { ipc[name] = fn; } },
         shell: { openExternal: async (u) => { opened.push(u); }, openPath: async (p) => { openedPaths.push(p); return openPathFailure; } },
         clipboard: { writeText: (t) => { clipboardText = t; } },
+        Notification: class { static isSupported() { return true; } constructor(o) { this.o = o; this.handlers = {}; } on(e, f) { this.handlers[e] = f; } show() { notifications.push(this); } },
+        screen: { getAllDisplays: () => [{ workArea: { x: 0, y: 0, width: 1920, height: 1040 } }] },
         dialog: { showSaveDialog: async (win, options) => { dialogCalls.push(options); return saveDialogChoice; } }
     },
     "minecraft-launcher-core": { Client: FakeClient },
@@ -755,6 +758,53 @@ test("Pendant la partie : « Se réduire » minimise au lancement et revient à 
     launchBehavior = "null";
     await ipc["launch-minecraft"](trusted(sender()), { ram: 4 });
     assert.deepStrictEqual(win.calls, []);
+
+    fakeWindows.length = 0;
+    fs.rmSync(path.join(userData, "settings.json"), { force: true });
+});
+
+test("Notifications Windows : erreur et jeu lancé quand le launcher n'est pas actif, jamais si désactivées ou si la fenêtre est active, sans donnée sensible", async () => {
+    reset();
+    fakeWindows.length = 0;
+    const win = makeFakeWindow(1184, 661);
+    win.focused = false;
+    win.isFocused = () => win.focused;
+    fakeWindows.push(win);
+    await ipc["save-launcher-settings"](trusted(sender()), { notifications: true });
+
+    notifications.length = 0;
+    upd.syncImpl = async () => { throw Object.assign(new Error("Le fichier « a.jar » est resté corrompu après 3 essais. jeton " + SECRET_MS), { code: "CORRUPT", canRepair: true }); };
+    await ipc["launch-minecraft"](trusted(sender()), { ram: 4 });
+    assert.strictEqual(notifications.length, 1, "une notification d'erreur");
+    assert.strictEqual(notifications[0].o.title, "Mise à jour impossible");
+    assert.ok(!JSON.stringify(notifications[0].o).includes(SECRET_MS), "aucun jeton dans la notification");
+
+    // un clic ramène le launcher
+    win.calls.length = 0;
+    win.minimized = true;
+    notifications[0].handlers.click();
+    assert.deepStrictEqual(win.calls, ["restore", "show", "focus"]);
+
+    // jeu lancé
+    notifications.length = 0;
+    upd.syncImpl = async () => ({ ok: true, offline: false, version: "10" });
+    await ipc["launch-minecraft"](trusted(sender()), { ram: 4 });
+    assert.deepStrictEqual(notifications.map((n) => n.o.title), ["Minecraft est lancé"]);
+    theClient.emit("close", 0);
+
+    // fenêtre active : rien
+    win.focused = true;
+    notifications.length = 0;
+    await ipc["launch-minecraft"](trusted(sender()), { ram: 4 });
+    theClient.emit("close", 0);
+    assert.strictEqual(notifications.length, 0, "launcher au premier plan : pas de notification");
+
+    // réglage désactivé : rien
+    win.focused = false;
+    await ipc["save-launcher-settings"](trusted(sender()), { notifications: false });
+    await ipc["launch-minecraft"](trusted(sender()), { ram: 4 });
+    theClient.emit("close", 0);
+    assert.strictEqual(notifications.length, 0, "désactivées : aucune notification");
 
     fakeWindows.length = 0;
     fs.rmSync(path.join(userData, "settings.json"), { force: true });

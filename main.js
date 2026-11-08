@@ -5,13 +5,16 @@ const {
     ipcMain,
     shell,
     clipboard,
-    dialog
+    dialog,
+    Notification,
+    screen
 } = require("electron");
 
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const { pathToFileURL } = require("url");
+const windowState = require("./windowState");
 
 const {
     Client
@@ -491,6 +494,45 @@ function rememberPrivate(...values) {
 }
 
 
+/*
+ * Notification Windows. Seulement si le joueur l'a laissée activée (Paramètres) ET si le launcher n'est pas
+ * la fenêtre active : inutile de doubler ce qu'il a déjà sous les yeux. Le texte passe par sanitize.
+ * Un clic ramène le launcher au premier plan.
+ */
+function notify(title, body) {
+
+    try {
+        if (!Notification || !Notification.isSupported || !Notification.isSupported()) return false;
+        if (!readLauncherSettings().notifications) return false;
+
+        const win = getMainWindow();
+
+        if (win && !win.isDestroyed() && win.isFocused && win.isFocused()) return false;
+
+        const notification = new Notification({
+            title: String(title).slice(0, 100),
+            body: sanitize(redactSecrets(String(body || "")), { privateStrings: [...privateStrings], userNames: currentUserNames() }).slice(0, 250),
+            silent: false
+        });
+
+        notification.on("click", () => {
+            const target = getMainWindow();
+            if (target && !target.isDestroyed()) {
+                if (target.isMinimized()) target.restore();
+                target.show();
+                target.focus();
+            }
+        });
+
+        notification.show();
+        return true;
+
+    } catch {
+        return false;
+    }
+}
+
+
 /* Message clair pour le joueur : étape + erreur technique -> { code, title, message, actions }. */
 function buildErrorPayload(step, error) {
 
@@ -502,6 +544,8 @@ function buildErrorPayload(step, error) {
     );
 
     lastError = { code: described.code, message: described.message };
+
+    notify(described.title || "CobbleRealm", described.message);
 
     pushLog(`[Erreur] ${described.code} — ${described.message}`);
 
@@ -764,12 +808,25 @@ async function fetchLauncherNews() {
    FENÊTRE PRINCIPALE
 ============================== */
 
+const WINDOW_STATE_FILE = () => path.join(app.getPath("userData"), "window-state.json");
+
 function createWindow() {
+
+    let saved = null;
+    let displays = [];
+
+    try {
+        saved = windowState.readState(WINDOW_STATE_FILE());
+        displays = screen && screen.getAllDisplays ? screen.getAllDisplays() : [];
+    } catch {}
+
+    const bounds = windowState.restoreBounds(saved, displays);
 
     const win =
         new BrowserWindow({
-            width: 1200,
-            height: 700,
+            width: bounds.width,
+            height: bounds.height,
+            ...(bounds.x !== undefined ? { x: bounds.x, y: bounds.y } : {}),
 
             minWidth: 900,
             minHeight: 600,
@@ -806,6 +863,42 @@ function createWindow() {
         });
 
     mainWindow = win;
+
+    if (bounds.maximized && win.maximize) win.maximize();
+
+    /* Mémorisation de la taille et de la position (enregistrement différé : pas d'écriture pendant le glissement). */
+    let saveTimer = null;
+    let lastNormalBounds = null;
+
+    const saveWindowState = () => {
+
+        clearTimeout(saveTimer);
+        saveTimer = null;
+
+        if (!win || win.isDestroyed() || win.isMinimized()) return;
+
+        const maximized = win.isMaximized();
+        const current = maximized ? (lastNormalBounds || win.getNormalBounds()) : win.getBounds();
+
+        if (!maximized) lastNormalBounds = current;
+
+        windowState.writeState(WINDOW_STATE_FILE(), { ...current, maximized });
+    };
+
+    const scheduleSave = () => {
+
+        /* en plein écran / maximisé, on garde la dernière taille normale */
+        if (!win.isMaximized() && !win.isMinimized()) lastNormalBounds = win.getBounds();
+
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(saveWindowState, 600);
+    };
+
+    win.on("resize", scheduleSave);
+    win.on("move", scheduleSave);
+    win.on("maximize", scheduleSave);
+    win.on("unmaximize", scheduleSave);
+    win.on("close", saveWindowState);
 
     /* Zoom automatique : à l'ouverture, puis à chaque redimensionnement. */
     win.webContents.on("did-finish-load", () => applyZoom(win));
@@ -2229,6 +2322,8 @@ handle(
 
             minimizeForGame();
 
+            notify("Minecraft est lancé", "Bon jeu sur CobbleRealm !");
+
             safeSend(
                 event.sender,
                 "minecraft-status",
@@ -2393,7 +2488,13 @@ app.whenReady().then(
 
         launcherSelfUpdater = initLauncherUpdates({
             app,
-            notify: (info) => broadcast("launcher-self-update", info)
+            notify: (info) => {
+                broadcast("launcher-self-update", info);
+
+                if (info && info.state === "ready") {
+                    notify("Mise à jour du launcher prête", "Redémarre le launcher pour installer la nouvelle version.");
+                }
+            }
         });
 
         /*

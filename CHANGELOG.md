@@ -22,6 +22,8 @@ Ce fichier présente, version après version, ce qui change pour les joueurs.
 - Nouveaux boutons dans la console : « Copier » et « Exporter » enregistrent le journal pour l'envoyer à l'équipe (sans donnée personnelle), « Effacer » le vide.
 - Animations discrètes et fluides : les pages apparaissent en fondu, les fenêtres et les menus s'ouvrent en douceur, le bouton JOUER « respire » doucement quand tout est prêt et un reflet parcourt la barre de téléchargement.
 - Nouvelle option « Réduire les animations » dans les Paramètres. Par défaut, le launcher suit le réglage de Windows.
+- Le launcher se souvient de la taille et de la position de sa fenêtre : tu la retrouves comme tu l'avais laissée. Si l'écran a changé, elle revient toujours à un endroit visible.
+- Notifications Windows : quand le launcher n'est pas au premier plan, tu es prévenu si une erreur survient, quand Minecraft est lancé ou quand une nouvelle version du launcher est prête. Un clic ramène le launcher. Elles se désactivent dans les Paramètres.
 - Le temps restant estimé s'affiche pendant les téléchargements.
 - Tu peux annuler un téléchargement : ce qui est déjà reçu est conservé, et il reprend ensuite sans tout recommencer.
 - Nouveau menu du compte Microsoft : tu peux changer de compte ou te déconnecter depuis le launcher.
