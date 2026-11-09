@@ -6,8 +6,9 @@ Chaque étape marquée **[AUTORISATION]** n'est exécutée qu'après un « oui �
 
 | Élément | État |
 |---|---|
-| Code | branche `developpe` (local uniquement, **jamais envoyée sur GitHub**), commit `13d1fb5`, sauvegardée par `git bundle` dans `D:\Sauvegarde-CobbleRealm-avant-2.0\depot-git\` et `%USERPROFILE%\Sauvegarde-depot-git\` |
-| Installeur | `dist\CobbleRealm-Launcher-Setup.exe`, identique octet pour octet au fichier du brouillon (SHA-256 `bfb2e508…58bc55`) ; son contenu = le code du commit `13d1fb5` (28 fichiers sur 28 identiques, dépendances = `package-lock.json`) |
+| Code | branche `developpe` (local uniquement, **jamais envoyée sur GitHub**), dernier commit de code `ba90a06` (portait le numéro `13d1fb5` avant le nettoyage de l'historique : voir la correspondance ci-dessous), sauvegardée par `git bundle` dans `D:\Sauvegarde-CobbleRealm-avant-2.0\depot-git\` et `%USERPROFILE%\Sauvegarde-depot-git\` |
+| Installeur | `dist\CobbleRealm-Launcher-Setup.exe`, identique octet pour octet au fichier du brouillon (SHA-256 `bfb2e508…58bc55`) ; son contenu = le code du commit `ba90a06` (28 fichiers sur 28 identiques, dépendances = `package-lock.json`) |
+| Historique | **nettoyé avant publication** : le nom d'utilisateur Windows et deux UUID de joueurs réels ont été retirés de tous les commits locaux de `developpe` ; les numéros de commit ont changé (ex. `13d1fb5` → `ba90a06`, `7aba295` → `9aaacf0`), les fichiers sont identiques (même arbre Git). L'ancienne histoire n'est conservée que dans la sauvegarde `refs/original/refs/heads/developpe` et les fichiers `.bundle` (**ne jamais les pousser sur GitHub : pousser uniquement `developpe` et `fusion-2.0:main`**) |
 | Release `v2.0.0` | **brouillon** invisible : installeur + `.blockmap` + `latest.yml` |
 | Modpack V10 | en ligne et signé : https://cyrian290606.github.io/CobbleRealm-Pack/manifest.json |
 | `main` (GitHub) | ancien launcher 1.0.x : `manifest.json` (v10, ZIP) et `news.json` intacts |
