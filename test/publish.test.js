@@ -191,6 +191,26 @@ test("Mise à jour : seuls les fichiers modifiés/ajoutés sont à envoyer", asy
     assert.strictEqual(noReuse.newAssets.length, 8);
 });
 
+test("--force (remplacer une préparation de la même version) : rien n'est supposé déjà en ligne, tous les fichiers sont préparés", async () => {
+    const archives = path.join(tmp, "m-force");
+    const src = makeSource("src-force");
+    const first = await build(src, "1.0.0", archives);
+    write(archives, "manifest-1.0.0.json", JSON.stringify(first.manifest));
+
+    /* sans --force : l'archive de la même version fait croire que tout est déjà en ligne */
+    const reuse = await build(src, "1.0.0", archives);
+    assert.strictEqual(reuse.newAssets.length, 0);
+
+    /* avec --force : on remplace la préparation, donc tout est à envoyer (elle n'a peut-être jamais été envoyée) */
+    const forced = await build(src, "1.0.0", archives, { replaceVersion: "1.0.0" });
+    assert.strictEqual(forced.newAssets.length, first.newAssets.length);
+    assert.ok(forced.newAssets.every((a) => a.tag === "pack-files-1"), "les numéros de release repartent de la première");
+
+    /* une AUTRE version déjà archivée reste prise en compte */
+    const other = await build(src, "1.1.0", archives, { replaceVersion: "1.1.0" });
+    assert.strictEqual(other.newAssets.length, 0);
+});
+
 test("Plus de 900 fichiers : répartition en plusieurs releases", async () => {
     const small = { ...policy, hosting: { ...policy.hosting, maxAssetsPerRelease: 2 } };
     const result = await publish.buildManifest({

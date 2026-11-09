@@ -242,8 +242,10 @@ async function buildManifest(options) {
         return { ...file, size, sha256, nsha256 };
     });
 
-    /* 3. Fichiers déjà en ligne (versions archivées) */
-    const archives = loadArchivedManifests(manifestsDir);
+    /* 3. Fichiers déjà en ligne (versions archivées).
+          --force remplace une préparation de la MÊME version : son archive ne prouve pas que ses fichiers sont en ligne
+          (elle peut n'avoir jamais été envoyée) : on ne s'y fie donc pas, tout ce qu'il faut envoyer est préparé. */
+    const archives = loadArchivedManifests(manifestsDir).filter((a) => !(options.replaceVersion && a.manifest.version === options.replaceVersion));
     const assetUrls = (manifest) => [...manifest.files.filter((f) => f.url).map((f) => f.url), ...(manifest.bundles || []).map((b) => b.url)];
     const nameOfUrl = (url) => decodeURIComponent(url.split("/").pop());
     const knownUrls = new Map();
@@ -677,6 +679,7 @@ async function main(argv) {
         manifestsDir: path.join(REPO_ROOT, "manifests"),
         reuse: !args["no-reuse"],
         bundles: !args["no-bundles"],
+        replaceVersion: args.force ? args.version : null,
         minecraft: args.minecraft, fabricLoader: args["fabric-loader"],
         java: args.java, recommendedRamGb: args.ram,
         onProgress: (n, total) => { if (n % 25 === 0 || n === total) process.stdout.write(`\r  hash ${n}/${total}`); }
