@@ -63,7 +63,13 @@
         "launcher_profiles.json",
         "usercache.json",
         "usernamecache.json",
-        "realms_persistence.json"
+        "realms_persistence.json",
+
+        "config/impactor/economy/**",
+        "config/worldedit/sessions/**",
+        "config/voicechat/username-cache.json",
+        "config/academy/gym_caches.json",
+        "fancymenu_data/last_world.fmdata"
       ]
     },
     {
@@ -78,7 +84,15 @@
         "config/xaero*/**",
         "config/journeymap/**",
         "config/jade/**",
-        "config/emi.css"
+        "config/emi.css",
+
+        "config/voicechat/**",
+        "config/defaultoptions/**",
+        "config/fzzy_config/keybinds.toml",
+        "config/**/keybinds*",
+        "config/**/client.*",
+        "config/**/*-client.*",
+        "config/**/*_client.*"
       ]
     },
     {

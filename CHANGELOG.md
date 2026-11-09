@@ -33,6 +33,7 @@ Ce fichier présente, version après version, ce qui change pour les joueurs.
 ### Améliorations
 - La mise à jour se termine toujours avant le lancement du jeu : plus de risque de démarrer avec une installation à moitié à jour.
 - Tes réglages et fichiers personnels (options, sauvegardes, captures d'écran, shaders) ne sont plus touchés par les mises à jour.
+- Tes réglages côté joueur dans les mods (touches, volume du chat vocal, affichage…) ne sont plus remis à zéro par les mises à jour du modpack.
 - Les mods qui ne font plus partie de CobbleRealm sont retirés automatiquement, et gardés de côté pendant 30 jours au cas où.
 - La mémoire proposée (RAM) s'adapte à la puissance de ton ordinateur, avec une valeur de départ raisonnable.
 - Messages d'erreur plus clairs, en français, qui t'expliquent quoi faire.
