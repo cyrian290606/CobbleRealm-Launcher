@@ -62,7 +62,7 @@ Pas de dossier `src/` : tout est à la racine. **Tout nouveau fichier .js du pro
 - [support.js](support.js) : rapport de support (`buildReport`) et `sanitize()` : masque jetons, e-mail, pseudo, UUID, IP, chemins Windows avec nom d'utilisateur. **Tout texte destiné à un rapport ou affiché au joueur passe par `sanitize`.**
 - [preload.js](preload.js) : pont `contextIsolation`. Tout nouveau canal IPC doit être déclaré dans main.js ET preload.js.
 - [index.html](index.html) : renderer, HTML + CSS + JS inline (CSP : pas de ressource externe).
-- [news.json](news.json) : annonces, lues sur `raw.githubusercontent.com/.../main/news.json`.
+- [news.json](news.json) : annonces des ANCIENS launchers 1.0.x, lues sur `raw.githubusercontent.com/.../main/news.json` (sur `main` : l'annonce de transition de `tools/transition/`). Le launcher 2.0 lit un fichier distinct, `news-2.json` (modèle : `tools/transition/news-2.json`), pour que les joueurs 2.0 ne voient jamais l'annonce destinée aux anciens. Transition 1.0.x → 2.0 : [tools/transition/README.md](tools/transition/README.md). **Ne jamais créer de release de modpack dans `CobbleRealm-Launcher`** (elle deviendrait la release « Latest » lue par la mise à jour automatique du launcher).
 - [tools/](tools/) : outils administrateur (publication, serveur de test, `policy.json`). Hors installeur.
 - `manifests/` : archive des manifests publiés (retour arrière). `docs/` : manifest servi par GitHub Pages.
 

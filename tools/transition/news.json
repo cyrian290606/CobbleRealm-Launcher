@@ -1,0 +1,25 @@
+{
+  "badge": "⚠️ IMPORTANT : NOUVEAU LAUNCHER",
+  "title": "Passe au launcher",
+  "titleHighlight": "CobbleRealm 2.0",
+  "version": "2.0",
+  "paragraphs": [
+    [
+      { "text": "Ce launcher est remplacé par la ", "className": "" },
+      { "text": "version 2.0", "className": "cyan" },
+      { "text": " : mises à jour du modpack bien plus rapides, réparation en un clic et launcher qui se met à jour tout seul.", "className": "" }
+    ],
+    [
+      { "text": "Installe-la ", "className": "" },
+      { "text": "une seule fois, à la main", "className": "green" },
+      { "text": " : télécharge « CobbleRealm-Launcher-Setup.exe » sur ", "className": "" },
+      { "text": "github.com/cyrian290606/CobbleRealm-Launcher/releases/latest", "className": "orange" },
+      { "text": " (lien aussi sur le Discord).", "className": "" }
+    ],
+    [
+      { "text": "Ton monde, tes options et tes mods sont ", "className": "" },
+      { "text": "conservés", "className": "purple" },
+      { "text": " et le modpack n'est pas retéléchargé en entier. Si Windows affiche un avertissement, clique sur « Informations complémentaires » puis « Exécuter quand même ».", "className": "" }
+    ]
+  ]
+}

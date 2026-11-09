@@ -44,6 +44,7 @@ Ce fichier présente, version après version, ce qui change pour les joueurs.
 - Le bouton « Copier le rapport » prépare un résumé à envoyer à l'équipe en cas de problème, sans aucune information personnelle (compte, pseudo, mots de passe ou nom de ton ordinateur).
 - Tu es maintenant prévenu si Minecraft s'arrête à cause d'une erreur.
 - Le bouton JOUER indique clairement l'état : « METTRE À JOUR ET JOUER » quand une mise à jour est disponible, « EN JEU » quand Minecraft est lancé, avec un indicateur de chargement animé à la place de l'ancien sablier.
+- L'assistant d'installation de Windows est entièrement en français.
 - Les textes du bouton JOUER s'adaptent à sa taille : plus de message coupé, même sur une petite fenêtre.
 - L'interface s'adapte automatiquement aux grands écrans : textes, boutons et fenêtres grandissent avec la taille de la fenêtre, sans changer l'apparence du launcher.
 - Les plus petits textes (pastilles, détails, indications) sont un peu plus grands pour être plus faciles à lire.

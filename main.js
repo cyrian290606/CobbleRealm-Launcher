@@ -273,7 +273,7 @@ const TRUST_KEYS_FILE = (DEV_MODE && process.env.COBBLEREALM_TRUST_KEYS_FILE) ||
 
 const COBBLEREALM_NEWS_URL =
     (DEV_MODE && process.env.COBBLEREALM_NEWS_URL) ||
-    "https://raw.githubusercontent.com/cyrian290606/CobbleRealm-Launcher/main/news.json";
+    "https://raw.githubusercontent.com/cyrian290606/CobbleRealm-Launcher/main/news-2.json";
 
 let launcherNewsCache = null;
 
