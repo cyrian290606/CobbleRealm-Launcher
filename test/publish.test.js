@@ -89,8 +89,13 @@ test("Fichiers PERSONNELS : jamais publiés (preserved) ou jamais écrasés (def
     for (const p of ["config/voicechat/voicechat-volumes.properties", "config/exposure-client.toml", "config/mod/sub/x_client.json", "config/mod/client.json",
         "config/fzzy_config/keybinds.toml", "config/defaultoptions/keybindings.txt", "config/xaerominimap/settings.txt"]) assert.strictEqual(c(p), "default", p);
 
-    /* le reste du modpack reste aligné sur le serveur */
-    for (const p of ["config/cobblemon/main.json", "config/impactor/impactor.conf", "mods/a.jar", "resourcepacks/p.zip", "datapacks/d/pack.mcmeta"]) assert.strictEqual(c(p), "managed", p);
+    /* fichiers générés ou propres au joueur, hors config/ */
+    assert.strictEqual(c("lootables_uses.json"), "preserved");
+    assert.strictEqual(c("data/fabricDefaultResourcePacks.dat"), "preserved");
+    for (const p of ["cobblenav/settings/pokenav.json", "cobblemon/riding_perspectives.json", "emi.json", "polymer/resource_pack.zip"]) assert.strictEqual(c(p), "default", p);
+
+    /* le reste du modpack reste aligné sur le serveur (y compris showdown/ et codex/, qui sont du contenu du modpack) */
+    for (const p of ["showdown/config/custom-formats.js", "codex/data.zip", "config/cobblemon/main.json", "config/impactor/impactor.conf", "mods/a.jar", "resourcepacks/p.zip", "datapacks/d/pack.mcmeta"]) assert.strictEqual(c(p), "managed", p);
 });
 
 test("Un motif sans '/' ne vaut qu'à la racine", () => {

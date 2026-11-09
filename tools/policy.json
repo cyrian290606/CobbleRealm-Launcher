@@ -69,7 +69,9 @@
         "config/worldedit/sessions/**",
         "config/voicechat/username-cache.json",
         "config/academy/gym_caches.json",
-        "fancymenu_data/last_world.fmdata"
+        "fancymenu_data/last_world.fmdata",
+        "lootables_uses.json",
+        "data/fabricDefaultResourcePacks.dat"
       ]
     },
     {
@@ -92,7 +94,11 @@
         "config/**/keybinds*",
         "config/**/client.*",
         "config/**/*-client.*",
-        "config/**/*_client.*"
+        "config/**/*_client.*",
+        "cobblenav/settings/**",
+        "cobblemon/riding_perspectives.json",
+        "emi.json",
+        "polymer/**"
       ]
     },
     {
@@ -106,7 +112,9 @@
         "global_packs/**",
         "scripts/**",
         "fancymenu_data/**",
-        "slideshow/**"
+        "slideshow/**",
+        "showdown/**",
+        "codex/**"
       ]
     }
   ]
