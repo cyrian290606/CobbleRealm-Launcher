@@ -11,6 +11,7 @@
  *   node tools/keys.js revoke <keyId>                           interdit une clé (à livrer dans une mise à jour du launcher)
  *   node tools/keys.js status                                   état de la liste de confiance
  *   node tools/keys.js check-repo                               vérifie qu'aucune clé privée n'est dans le dépôt
+ *   node tools/keys.js restore-test [--dir <originaux>]         retrouve les COPIES des clés sur tous les lecteurs et teste chacune (mot de passe demandé)
  *
  * Mot de passe : demandé au clavier (invisible), ou variable COBBLEREALM_KEY_PASSPHRASE (automatisation).
  * Les clés PRIVÉES (chiffrées) sont écrites uniquement dans un dossier HORS du dépôt Git ; seule la clé PUBLIQUE
@@ -181,6 +182,56 @@ function findPrivateKeysInRepo(root = REPO_ROOT) {
     return found;
 }
 
+/* ---------------- test de restauration ---------------- */
+
+const KEY_NAME = /^(primary|backup)-[0-9a-f]{16}\.key\.json$/;
+const SKIP_DIRS = new Set(["Windows", "Program Files", "Program Files (x86)", "ProgramData", "node_modules", ".git", "AppData", "Recovery", "System Volume Information"]);
+
+/** Fichiers de clés trouvés sur les lecteurs (profondeur limitée). Ne lit aucun contenu. */
+function findKeyCopies(roots, depth = 5) {
+
+    const found = [];
+
+    const walk = (dir, left) => {
+        let entries;
+        try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+        for (const e of entries) {
+            const full = path.join(dir, e.name);
+            if (e.isFile() && KEY_NAME.test(e.name)) found.push(full);
+            else if (e.isDirectory() && left > 0 && !SKIP_DIRS.has(e.name) && !e.name.startsWith("$")) walk(full, left - 1);
+        }
+    };
+
+    for (const root of roots) walk(root, depth);
+
+    return found;
+}
+
+const fileHash = (file) => crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex").slice(0, 16);
+
+/**
+ * Prouve qu'une copie de clé fonctionne : le mot de passe la déchiffre, elle signe un fichier de test, la signature
+ * est reconnue par la liste de confiance du launcher, et une falsification est refusée. N'écrit rien dans le dépôt.
+ */
+function testKeyFile(keyPath, passphrase) {
+
+    const dir = fs.mkdtempSync(path.join(require("os").tmpdir(), "cr-restore-"));
+    const target = path.join(dir, "test.json");
+
+    try {
+        fs.writeFileSync(target, JSON.stringify({ test: "restauration", at: Date.now() }));
+        const result = signFile(target, keyPath, passphrase);
+        verifyFile(target);
+        fs.appendFileSync(target, " ");
+        let refused = false;
+        try { verifyFile(target); } catch (e) { refused = e.code === "MANIFEST_SIGNATURE"; }
+        if (!refused) throw new Error("une falsification n'a pas été refusée : ne pas utiliser cette clé");
+        return result;
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+}
+
 /* ---------------- ligne de commande ---------------- */
 
 function parseArgs(argv) {
@@ -302,11 +353,57 @@ async function main(argv) {
         return 0;
     }
 
-    console.error("Commandes : init | new-key | sign | verify | revoke | status | check-repo (voir l'en-tête de tools/keys.js)");
+    if (command === "restore-test") {
+
+        const originals = path.resolve(args.dir || "D:\\CobbleRealm-Cles");
+        const drives = process.platform === "win32" ? "CDEFGHIJKLMNOPQRSTUVWXYZ".split("").map((l) => l + ":\\").filter((d) => fs.existsSync(d)) : ["/"];
+        const parsed = sig.parseTrustedKeys(readTrust());
+
+        console.log("Lecteurs détectés : " + drives.map((d) => d[0]).join(" "));
+
+        const copies = findKeyCopies(drives).filter((f) => !path.resolve(f).toLowerCase().startsWith(REPO_ROOT.toLowerCase()));
+        const originalFiles = copies.filter((f) => path.resolve(path.dirname(f)).toLowerCase() === originals.toLowerCase());
+        const backups = copies.filter((f) => !originalFiles.includes(f));
+        const roles = { primary: 0, backup: 0 };
+
+        console.log("\nOriginaux (" + originals + ") :");
+        for (const f of originalFiles) console.log("  " + path.basename(f));
+        if (!originalFiles.length) console.log("  (aucun)");
+
+        console.log("\nCopies trouvées ailleurs :");
+        for (const f of backups) {
+            const original = originalFiles.find((o) => path.basename(o) === path.basename(f));
+            const state = original ? (fileHash(f) === fileHash(original) ? "identique à l'original" : "DIFFÉRENTE de l'original") : "(pas d'original à comparer)";
+            console.log("  " + f + "  -> " + state);
+        }
+        if (!backups.length) console.log("  AUCUNE : branche tes clés USB / supports de sauvegarde puis relance la commande.");
+
+        for (const f of backups) {
+
+            const file = JSON.parse(fs.readFileSync(f, "utf8"));
+            const known = parsed.keys.find((k) => k.id === file.keyId);
+            console.log("\n=== " + f + "\n    clé " + file.keyId + (known ? " (" + known.role + ")" : " : INCONNUE de la liste de confiance du launcher"));
+
+            if (!known) continue;
+
+            try {
+                const r = testKeyFile(f, await getPassphrase("la clé " + (known.role === "backup" ? "de SECOURS" : "PRINCIPALE") + " " + file.keyId));
+                roles[known.role]++;
+                console.log("    OK : mot de passe correct, signature reconnue (" + r.role + "), falsification refusée.");
+            } catch (error) {
+                console.log("    ECHEC : " + error.message);
+            }
+        }
+
+        console.log("\nBilan : copie PRINCIPALE testée : " + (roles.primary ? "OUI" : "non") + " · copie de SECOURS testée : " + (roles.backup ? "OUI" : "non"));
+        return roles.primary && roles.backup ? 0 : 1;
+    }
+
+    console.error("Commandes : init | new-key | restore-test | sign | verify | revoke | status | check-repo (voir l'en-tête de tools/keys.js)");
     return 2;
 }
 
-module.exports = { getPassphrase, assertSafeKeyDir, generateKey, signFile, verifyFile, findPrivateKeysInRepo, readTrust, writeTrust, REPO_ROOT };
+module.exports = { findKeyCopies, testKeyFile, getPassphrase, assertSafeKeyDir, generateKey, signFile, verifyFile, findPrivateKeysInRepo, readTrust, writeTrust, REPO_ROOT };
 
 if (require.main === module) {
     main(process.argv.slice(2)).then(

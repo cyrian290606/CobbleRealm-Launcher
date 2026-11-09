@@ -186,6 +186,20 @@ test("Outil : signature d'un fichier, relecture, refus d'une clé absente de la 
     fs.writeFileSync(TRUST, JSON.stringify({ version: 1, keys: [primary.entry, backup.entry], revoked: [] }));
 });
 
+test("Test de restauration : retrouve les copies de clés, prouve qu'elles fonctionnent, refuse un mauvais mot de passe", () => {
+    fs.writeFileSync(TRUST, JSON.stringify({ version: 1, keys: [primary.entry, backup.entry], revoked: [] }));
+    const usb = path.join(tmp, "cle-usb", "sauvegarde"); fs.mkdirSync(usb, { recursive: true });
+    fs.writeFileSync(path.join(usb, `primary-${primary.entry.id}.key.json`), JSON.stringify(primary.file));
+    fs.writeFileSync(path.join(usb, "autre-fichier.json"), "{}");
+
+    const found = keys.findKeyCopies([path.join(tmp, "cle-usb")]);
+    assert.deepStrictEqual(found.map((f) => path.basename(f)), [`primary-${primary.entry.id}.key.json`]);
+
+    assert.strictEqual(keys.testKeyFile(found[0], PASS).role, "primary");
+    assert.throws(() => keys.testKeyFile(found[0], "mauvais-mot-de-passe-123"), /incorrect/);
+    assert.deepStrictEqual(fs.readdirSync(usb).sort(), [`primary-${primary.entry.id}.key.json`, "autre-fichier.json"].sort(), "rien n'est écrit sur le support");
+});
+
 /* ---------------- de bout en bout : updater + serveur ---------------- */
 
 async function withServer({ signer, trustedKeys = trusted() }, fn) {
