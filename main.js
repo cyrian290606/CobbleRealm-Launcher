@@ -3,13 +3,19 @@ const {
     BrowserWindow,
     Menu,
     ipcMain,
-    shell
+    shell,
+    clipboard,
+    dialog,
+    Notification,
+    screen
 } = require("electron");
 
 const path = require("path");
 const fs = require("fs");
-const extract = require("extract-zip");
-const AdmZip = require("adm-zip");
+const os = require("os");
+const { pathToFileURL } = require("url");
+const windowState = require("./windowState");
+const { loadTrustedKeys } = require("./updater/signature");
 
 const {
     Client
@@ -17,6 +23,7 @@ const {
 
 const {
     loginMicrosoft,
+    cancelLogin,
     getMicrosoftSession,
     logoutMicrosoft
 } = require("./auth");
@@ -24,6 +31,15 @@ const {
 const {
     loginMinecraft
 } = require("./minecraftAuth");
+
+const { createUpdater } = require("./updater");
+const { ensureJava } = require("./runtime");
+const { ensureFabricProfile } = require("./fabric");
+const { initLauncherUpdates } = require("./launcherUpdates");
+const { describeError } = require("./playerErrors");
+const { sanitize, buildReport, currentUserNames } = require("./support");
+const changelogModule = require("./changelog");
+const { getServerStatus } = require("./serverStatus");
 
 
 /* ==============================
@@ -34,33 +50,263 @@ Menu.setApplicationMenu(null);
 
 const launcher = new Client();
 
-const COBBLEREALM_MANIFEST_URL =
-    "https://raw.githubusercontent.com/cyrian290606/CobbleRealm-Launcher/main/manifest.json";
+let launchInProgress = false;
 
-const COBBLEREALM_NEWS_URL =
-    "https://raw.githubusercontent.com/cyrian290606/CobbleRealm-Launcher/main/news.json";
+/* ==============================
+   INSTANCE UNIQUE
+============================== */
 
-let launcherNewsCache = null;
+const hasSingleInstanceLock =
+    app.requestSingleInstanceLock();
 
-const MINECRAFT_VERSION =
-    "1.21.1";
+if (!hasSingleInstanceLock) {
 
-const FABRIC_LOADER_VERSION =
-    "0.18.4";
+    app.quit();
 
-const FABRIC_PROFILE_ID =
-    `fabric-loader-${FABRIC_LOADER_VERSION}-${MINECRAFT_VERSION}`;
+} else {
 
-const FABRIC_PROFILE_URL =
-    `https://meta.fabricmc.net/v2/versions/loader/${encodeURIComponent(MINECRAFT_VERSION)}/${encodeURIComponent(FABRIC_LOADER_VERSION)}/profile/json`;
+    app.on("second-instance", () => {
 
+        const win =
+            BrowserWindow.getAllWindows()[0];
+
+        if (win && !win.isDestroyed()) {
+
+            if (win.isMinimized()) {
+                win.restore();
+            }
+
+            win.show();
+            win.focus();
+        }
+    });
+}
 
 
 /* ==============================
-   MISE À JOUR COBBLEREALM
+   UTILITAIRES
 ============================== */
 
+/*
+ * Masque les secrets (jeton d'accès) dans un texte avant
+ * de l'afficher en console ou de l'envoyer à l'interface.
+ * MCLC écrit toute la ligne de commande Java dans ses
+ * messages "debug", y compris --accessToken.
+ */
+function redactSecrets(text) {
+
+    return String(text)
+        .replace(
+            /(--accessToken\s+)\S+/gi,
+            "$1***"
+        )
+        .replace(
+            /(--(?:session|xuid|clientId)\s+)\S+/gi,
+            "$1***"
+        )
+        .replace(
+            /\beyJ[\w-]+\.[\w-]+\.[\w-]+/g,
+            "***"
+        );
+}
+
+
+/* Envoi sans erreur si la fenêtre a été fermée entre-temps. */
+function safeSend(sender, channel, payload) {
+
+    try {
+
+        if (sender && !sender.isDestroyed()) {
+            sender.send(channel, payload);
+        }
+
+    } catch (error) {
+
+        console.warn(
+            "[CobbleRealm] Envoi IPC impossible :",
+            channel
+        );
+    }
+}
+
+
+/* Seules les pages de connexion Microsoft peuvent être ouvertes automatiquement. */
+function isMicrosoftUrl(value) {
+
+    try {
+
+        const url = new URL(value);
+
+        return (
+            url.protocol === "https:" &&
+            /(^|\.)(microsoft\.com|live\.com|microsoftonline\.com)$/.test(url.hostname)
+        );
+
+    } catch {
+
+        return false;
+    }
+}
+
+
+/* Callback du code d'appareil Microsoft, vers l'interface. */
+/* Page et code de la connexion en cours (jamais fournis par la page : « Rouvrir la page » et « Copier le code » les utilisent). */
+let currentLoginPage = null;
+let currentLoginCode = null;
+
+function createDeviceCodeHandler(sender) {
+
+    return async (deviceCode) => {
+
+        safeSend(
+            sender,
+            "microsoft-device-code",
+            deviceCode
+        );
+
+        currentLoginCode =
+            deviceCode && typeof deviceCode.userCode === "string" && /^[A-Za-z0-9]{4,20}$/.test(deviceCode.userCode)
+                ? deviceCode.userCode
+                : null;
+
+        currentLoginPage =
+            deviceCode && isMicrosoftUrl(deviceCode.verificationUri)
+                ? deviceCode.verificationUri
+                : null;
+
+        if (
+            deviceCode &&
+            typeof deviceCode.verificationUri === "string" &&
+            isMicrosoftUrl(deviceCode.verificationUri)
+        ) {
+
+            try {
+                await shell.openExternal(
+                    deviceCode.verificationUri
+                );
+            } catch {}
+        }
+    };
+}
+
+
+/* ==============================
+   MÉMOIRE RAM
+============================== */
+
+const MAX_RAM_GB_HARD_LIMIT = 16;
+const MIN_RAM_GB = 2;
+const RAM_RESERVED_FOR_SYSTEM_GB = 2;
+
+function getRamLimits() {
+
+    const totalGb =
+        os.totalmem() / (1024 ** 3);
+
+    /* On laisse au moins 2 Go à Windows. */
+    const maxRam =
+        Math.max(
+            MIN_RAM_GB,
+            Math.min(
+                MAX_RAM_GB_HARD_LIMIT,
+                Math.floor(totalGb - RAM_RESERVED_FOR_SYSTEM_GB)
+            )
+        );
+
+    /* 6 Go sur une machine à 16 Go ou plus, sinon 4 Go. */
+    const defaultRam =
+        Math.min(
+            maxRam,
+            totalGb >= 16 ? 6 : 4
+        );
+
+    return {
+        minRam: MIN_RAM_GB,
+        maxRam,
+        defaultRam
+    };
+}
+
+
+function clampRam(value) {
+
+    const {
+        minRam,
+        maxRam,
+        defaultRam
+    } = getRamLimits();
+
+    const number =
+        Math.round(Number(value));
+
+    if (!Number.isFinite(number) || number <= 0) {
+        return defaultRam;
+    }
+
+    return Math.max(
+        minRam,
+        Math.min(number, maxRam)
+    );
+}
+
+
+/*
+ * Mode développement : uniquement avec `npm start` (application non empaquetée)
+ * ET COBBLEREALM_DEV=1. Permet de pointer vers un serveur de test local et un
+ * dossier de jeu jetable, sans jamais toucher à l'installation réelle.
+ * Ignoré dans l'application installée.
+ */
+const DEV_MODE =
+    !app.isPackaged &&
+    process.env.COBBLEREALM_DEV === "1";
+
+const COBBLEREALM_MANIFEST_URL =
+    (DEV_MODE && process.env.COBBLEREALM_MANIFEST_URL) ||
+    "https://cyrian290606.github.io/CobbleRealm-Pack/manifest.json";
+
+/*
+ * Signature du manifest : OBLIGATOIRE dans l'application installée. Seul le mode développement isolé (jamais l'installée)
+ * peut utiliser d'autres clés de confiance (clés de TEST) ou, explicitement, désactiver la vérification.
+ */
+const ALLOW_UNSIGNED_MANIFEST = DEV_MODE && process.env.COBBLEREALM_ALLOW_UNSIGNED === "1";
+const TRUST_KEYS_FILE = (DEV_MODE && process.env.COBBLEREALM_TRUST_KEYS_FILE) || undefined;
+
+const COBBLEREALM_NEWS_URL =
+    (DEV_MODE && process.env.COBBLEREALM_NEWS_URL) ||
+    "https://raw.githubusercontent.com/cyrian290606/CobbleRealm-Launcher/main/news-2.json";
+
+let launcherNewsCache = null;
+
+/*
+ * Adresse du serveur Minecraft (« nom-de-domaine » ou « nom-de-domaine:port »).
+ * TANT QU'ELLE N'EST PAS RENSEIGNÉE, la ligne « Serveur » est masquée : aucune information inventée.
+ */
+const SERVER_ADDRESS =
+    (DEV_MODE && process.env.COBBLEREALM_SERVER) ||
+    null;
+
+/* Changelog public : mis à jour en ligne sans republier le launcher ; sinon dernière version connue ou version intégrée. */
+const CHANGELOG_URL =
+    (DEV_MODE && process.env.COBBLEREALM_CHANGELOG_URL) ||
+    "https://raw.githubusercontent.com/cyrian290606/CobbleRealm-Launcher/main/CHANGELOG.md";
+
+/* Valeurs de secours si le manifest et l'installation sont inconnus. */
+const FALLBACK_VERSIONS = {
+    minecraft: "1.21.1",
+    fabricLoader: "0.18.4",
+    java: 21,
+    recommendedRamGb: 6
+};
+
+const INDEX_URL =
+    pathToFileURL(path.join(__dirname, "index.html")).href;
+
+
 function getCobbleRealmRoot() {
+
+    if (DEV_MODE && process.env.COBBLEREALM_ROOT) {
+        return path.resolve(process.env.COBBLEREALM_ROOT);
+    }
 
     return path.join(
         app.getPath("appData"),
@@ -69,103 +315,422 @@ function getCobbleRealmRoot() {
 }
 
 
-function getLocalVersionPath() {
+/* ==============================
+   SÉCURITÉ IPC
+============================== */
 
-    return path.join(
-        getCobbleRealmRoot(),
-        "version.json"
-    );
-}
-
-
-function readLocalCobbleRealmVersion() {
+/* Seule notre page locale (index.html) a le droit d'appeler le processus principal. */
+function isTrustedSender(event) {
 
     try {
 
-        const versionPath =
-            getLocalVersionPath();
-
-        if (
-            !fs.existsSync(
-                versionPath
-            )
-        ) {
-            return "0.0.0";
-        }
-
-        const data =
-            JSON.parse(
-                fs.readFileSync(
-                    versionPath,
-                    "utf8"
-                )
-            );
+        const url =
+            event && event.senderFrame && event.senderFrame.url;
 
         return (
-            data.version ||
-            "0.0.0"
+            typeof url === "string" &&
+            url.split(/[?#]/)[0] === INDEX_URL
         );
 
-    } catch (error) {
+    } catch {
 
-        console.error(
-            "[CobbleRealm] Erreur lecture version locale :",
-            error
-        );
-
-        return "0.0.0";
+        return false;
     }
 }
 
 
-async function getRemoteCobbleRealmManifest() {
+function handle(channel, listener) {
 
-    const manifestUrl =
-    `${COBBLEREALM_MANIFEST_URL}?t=${Date.now()}`;
+    ipcMain.handle(
+        channel,
 
-const response =
-    await fetch(
-        manifestUrl,
-        {
-            cache: "no-store"
+        (event, ...args) => {
+
+            if (!isTrustedSender(event)) {
+
+                console.warn(
+                    "[CobbleRealm] Appel IPC refusé (origine inconnue) :",
+                    channel
+                );
+
+                return {
+                    success: false,
+                    error: "Appel refusé."
+                };
+            }
+
+            return listener(event, ...args);
         }
     );
+}
 
-    if (!response.ok) {
 
-        throw new Error(
-            `Impossible de récupérer le manifest CobbleRealm (${response.status})`
-        );
+function safeMessage(error, fallback) {
+
+    const text =
+        error && error.message
+            ? error.message
+            : fallback;
+
+    return redactSecrets(text);
+}
+
+
+/* ==============================
+   MISE À JOUR COBBLEREALM
+============================== */
+
+function broadcast(channel, payload) {
+
+    for (const win of BrowserWindow.getAllWindows()) {
+
+        if (win && !win.isDestroyed()) {
+            safeSend(win.webContents, channel, payload);
+        }
+    }
+}
+
+
+function sendLauncherUpdateStatus(status, message, extra = {}) {
+
+    broadcast(
+        "launcher-update-status",
+        { status, message, ...extra }
+    );
+}
+
+
+/*
+ * Journal de diagnostic des mises à jour : quels fichiers sont (re)téléchargés, et pourquoi.
+ * Écrit dans userData/update-diagnostic.txt (écrasé à chaque vérification) + résumé dans la console du launcher.
+ * Ne contient que des chemins relatifs au dossier de jeu, jamais de chemin Windows ni de donnée personnelle.
+ */
+function writeUpdateDiagnostic({ repair, version, installedVersion, entries }) {
+
+    const counts = {};
+    for (const entry of entries) counts[entry.code] = (counts[entry.code] || 0) + 1;
+
+    const summary = Object.entries(counts).map(([code, n]) => `${n} ${code}`).join(", ");
+
+    if (entries.length) {
+        pushLog(`[Mise à jour] ${repair ? "Réparation" : "Vérification"} : ${entries.length} fichier(s) à télécharger (${summary}). Détail : update-diagnostic.txt`);
     }
 
-    return await response.json();
+    try {
+        const lines = [
+            `Journal de diagnostic — ${new Date().toISOString()}`,
+            `Mode : ${repair ? "réparation (tout est revérifié)" : "mise à jour"} · modpack installé : ${installedVersion || "aucun"} → serveur : ${version}`,
+            `Fichiers à télécharger : ${entries.length}${summary ? " (" + summary + ")" : ""}`,
+            ""
+        ];
+
+        for (const entry of entries) {
+            lines.push(`${entry.code.padEnd(18)} | ${entry.policy.padEnd(8)} | ${entry.path} | local : ${entry.localSize === null ? "absent" : entry.localSize + " o"} · attendu : ${entry.expectedSize} o | ${entry.reason}`);
+        }
+
+        fs.writeFileSync(path.join(app.getPath("userData"), "update-diagnostic.txt"), lines.join("\n") + "\n", "utf8");
+
+    } catch { /* le journal est un confort : jamais bloquant */ }
 }
+
+
+function readTrustedKeys() {
+
+    try {
+        return loadTrustedKeys(TRUST_KEYS_FILE);
+    } catch {
+        /* liste illisible : aucune clé de confiance => tout manifest est refusé (jamais d'acceptation par défaut) */
+        return { keys: [], revoked: new Set() };
+    }
+}
+
+
+let updater = null;
+
+function getUpdater() {
+
+    if (!updater) {
+
+        updater = createUpdater({
+            gameRoot: getCobbleRealmRoot(),
+            manifestUrl: COBBLEREALM_MANIFEST_URL,
+            allowLocal: DEV_MODE,
+            requireSignature: !ALLOW_UNSIGNED_MANIFEST,
+            trustedKeys: readTrustedKeys(),
+            onProgress: (event) => broadcast("update-progress", event),
+            onDiagnostic: writeUpdateDiagnostic
+        });
+    }
+
+    return updater;
+}
+
+
+function formatSize(bytes) {
+
+    if (bytes >= 1024 ** 3) {
+        return `${(bytes / 1024 ** 3).toFixed(1)} Go`;
+    }
+
+    return `${Math.max(1, Math.round(bytes / 1048576))} Mo`;
+}
+
+
+/* Résultat partagé entre le démarrage et l'interface : une seule vérification. */
+let lastCheck = null;
+
+function describeCheck(check) {
+
+    if (!check) {
+        return "Vérification de la version...";
+    }
+
+    if (check.fatal) {
+        return check.error.message;
+    }
+
+    if (check.offline) {
+
+        return check.valid
+            ? `Hors-ligne — version installée v${check.installedVersion}`
+            : "Impossible de vérifier la mise à jour (hors-ligne)";
+    }
+
+    if (check.updateAvailable) {
+
+        return check.filesToDownload > 0
+            ? `Mise à jour disponible — v${check.remoteVersion} ` +
+              `(${check.filesToDownload} fichier${check.filesToDownload > 1 ? "s" : ""}, ${formatSize(check.bytesToDownload)})`
+            : `Mise à jour disponible — v${check.remoteVersion}`;
+    }
+
+    return `CobbleRealm à jour — v${check.installedVersion || check.remoteVersion}`;
+}
+
+
+/* ==============================
+   ERREURS ET RAPPORT DE SUPPORT
+============================== */
+
+const MAX_LOG_LINES = 300;
+
+const privateStrings = new Set();      // pseudo, e-mail du compte : masqués dans tout rapport
+const recentLogs = [];                 // dernières lignes du journal (sans jeton)
+let lastError = null;                  // { code, message } de la dernière erreur affichée
+
+
+/* Garde une ligne du journal pour le rapport de support (jetons masqués dès l'entrée). */
+const clockTime = () => new Date().toTimeString().slice(0, 8);
+
+function pushLog(text) {
+
+    for (const raw of String(text).split(/\r?\n/)) {
+
+        const line = redactSecrets(raw).trim();
+
+        if (line) {
+            recentLogs.push(`[${clockTime()}] ${line.slice(0, 400)}`);
+        }
+    }
+
+    if (recentLogs.length > MAX_LOG_LINES) {
+        recentLogs.splice(0, recentLogs.length - MAX_LOG_LINES);
+    }
+}
+
+
+function rememberPrivate(...values) {
+
+    for (const value of values) {
+
+        if (typeof value === "string" && value.trim().length >= 3) {
+            privateStrings.add(value.trim());
+        }
+    }
+}
+
+
+/*
+ * Notification Windows. Seulement si le joueur l'a laissée activée (Paramètres) ET si le launcher n'est pas
+ * la fenêtre active : inutile de doubler ce qu'il a déjà sous les yeux. Le texte passe par sanitize.
+ * Un clic ramène le launcher au premier plan.
+ */
+function notify(title, body) {
+
+    try {
+        if (!Notification || !Notification.isSupported || !Notification.isSupported()) return false;
+        if (!readLauncherSettings().notifications) return false;
+
+        const win = getMainWindow();
+
+        if (win && !win.isDestroyed() && win.isFocused && win.isFocused()) return false;
+
+        const notification = new Notification({
+            title: String(title).slice(0, 100),
+            body: sanitize(redactSecrets(String(body || "")), { privateStrings: [...privateStrings], userNames: currentUserNames() }).slice(0, 250),
+            silent: false
+        });
+
+        notification.on("click", () => {
+            const target = getMainWindow();
+            if (target && !target.isDestroyed()) {
+                if (target.isMinimized()) target.restore();
+                target.show();
+                target.focus();
+            }
+        });
+
+        notification.show();
+        return true;
+
+    } catch {
+        return false;
+    }
+}
+
+
+/* Message clair pour le joueur : étape + erreur technique -> { code, title, message, actions }. */
+function buildErrorPayload(step, error) {
+
+    const described = describeError({ step, error });
+
+    described.message = sanitize(
+        redactSecrets(described.message),
+        { privateStrings: [...privateStrings], userNames: currentUserNames() }
+    );
+
+    lastError = { code: described.code, message: described.message };
+
+    notify(described.title || "CobbleRealm", described.message);
+
+    pushLog(`[Erreur] ${described.code} — ${described.message}`);
+
+    /* Cause technique, pour le journal de la console et le rapport (déjà nettoyé par sanitize/redactSecrets) : */
+    const cause = error && (error.cause || error);
+    const detail = cause && [cause.httpStatus && `HTTP ${cause.httpStatus}`, cause.code, cause.message].filter(Boolean).join(" · ");
+
+    if (detail && detail !== described.message) {
+        pushLog(`[Détail] ${sanitize(redactSecrets(String(detail)), { privateStrings: [...privateStrings], userNames: currentUserNames() }).slice(0, 300)}`);
+    }
+
+    return described;
+}
+
+
+function sendLaunchError(sender, step, error) {
+
+    safeSend(sender, "launch-error", buildErrorPayload(step, error));
+}
+
+
+function broadcastLaunchError(step, error) {
+
+    broadcast("launch-error", buildErrorPayload(step, error));
+}
+
+
+function currentReport() {
+
+    const installed = getUpdater().status();
+    const versions = resolveVersions(null);
+
+    return buildReport({
+        info: {
+            launcher: app.getVersion(),
+            pack: installed.version,
+            minecraft: versions.minecraft,
+            fabric: versions.fabricLoader,
+            java: String(versions.java),
+            ramAllocatedGb: readLauncherSettings().ram
+        },
+        error: lastError,
+        logs: recentLogs,
+        privateStrings: [...privateStrings]
+    });
+}
+
+
+/* Une seule vérification à la fois : les appels simultanés partagent la même. */
+let checkInFlight = null;
+
+function runCheck() {
+
+    if (!checkInFlight) {
+
+        checkInFlight = (async () => {
+
+            try {
+
+                lastCheck = await getUpdater().check();
+
+            } catch (error) {
+
+                lastCheck = { ok: false, fatal: true, error };
+            }
+
+            return lastCheck;
+
+        })().finally(() => { checkInFlight = null; });
+    }
+
+    return checkInFlight;
+}
+
+
+/* Versions : manifest si on l'a, sinon dernière installation connue, sinon valeurs de secours. */
+function resolveVersions(manifest) {
+
+    const lock = getUpdater().status().lock;
+    const source = manifest || lock || {};
+
+    return {
+        minecraft: source.minecraft || FALLBACK_VERSIONS.minecraft,
+        fabricLoader: source.fabricLoader || FALLBACK_VERSIONS.fabricLoader,
+        java: Number(source.java) || FALLBACK_VERSIONS.java,
+        recommendedRamGb: Number(source.recommendedRamGb) || FALLBACK_VERSIONS.recommendedRamGb
+    };
+}
+
+
+let mainWindow = null;
+let launcherSelfUpdater = null;
 
 
 function getDefaultLauncherNews() {
     return {
-        badge: "📣 MISE À JOUR V4",
+        badge: "📣 ACTUALITÉS",
         title: "Bienvenue sur",
         titleHighlight: "CobbleRealm",
-        version: "V4",
+        version: "",
         paragraphs: [
             [
-                { text: "Découvrez la ", className: "" },
-                { text: "V4", className: "cyan" },
-                { text: " avec une ", className: "" },
-                { text: "refonte complète des raids", className: "cyan" },
-                { text: ", ", className: "" },
-                { text: "Cobblemon Expeditions", className: "purple" },
-                { text: ", de nouvelles ", className: "" },
-                { text: "montures Pokémon", className: "orange" },
-                { text: ", plus d'informations dans ", className: "" },
-                { text: "EMI", className: "green" },
-                { text: " et plusieurs ", className: "" },
-                { text: "améliorations visuelles", className: "purple" },
-                { text: ".", className: "" }
+                { text: "Retrouve ici les ", className: "" },
+                { text: "dernières nouveautés", className: "cyan" },
+                { text: " de CobbleRealm dès que tu es connecté à Internet.", className: "" }
             ]
         ]
     };
+}
+
+
+function newsCachePath() {
+    return path.join(app.getPath("userData"), "news-cache.json");
+}
+
+
+/* Dernière annonce connue : affichée si le réseau est coupé, à la place d'un texte inventé. */
+function readCachedNews() {
+
+    try {
+
+        const data = JSON.parse(fs.readFileSync(newsCachePath(), "utf8"));
+
+        return normalizeLauncherNews(data);
+
+    } catch {
+
+        return null;
+    }
 }
 
 
@@ -269,7 +834,8 @@ async function fetchLauncherNews() {
         const response = await fetch(
             COBBLEREALM_NEWS_URL,
             {
-                cache: "no-store"
+                cache: "no-store",
+                signal: AbortSignal.timeout(10000)
             }
         );
 
@@ -284,895 +850,47 @@ async function fetchLauncherNews() {
             throw new Error("JSON de news invalide.");
         }
 
+        try {
+            fs.writeFileSync(newsCachePath(), JSON.stringify(normalized), "utf8");
+        } catch { /* le cache est facultatif */ }
+
         return normalized;
 
     } catch (error) {
         console.warn(
-            "[CobbleRealm] Impossible de charger les news distantes, utilisation du fallback local.",
-            error
+            "[CobbleRealm] Impossible de charger les news distantes :",
+            error && error.message
         );
 
-        return getDefaultLauncherNews();
+        return readCachedNews() || getDefaultLauncherNews();
     }
 }
 
-
-function compareVersions(
-    currentVersion,
-    remoteVersion
-) {
-
-    const current =
-        String(
-            currentVersion
-        )
-            .split(".")
-            .map(Number);
-
-    const remote =
-        String(
-            remoteVersion
-        )
-            .split(".")
-            .map(Number);
-
-    const length =
-        Math.max(
-            current.length,
-            remote.length
-        );
-
-    for (
-        let i = 0;
-        i < length;
-        i++
-    ) {
-
-        const a =
-            current[i] || 0;
-
-        const b =
-            remote[i] || 0;
-
-        if (a < b) {
-            return -1;
-        }
-
-        if (a > b) {
-            return 1;
-        }
-    }
-
-    return 0;
-}
-
-
-async function checkCobbleRealmUpdate() {
-
-    const localVersion =
-        readLocalCobbleRealmVersion();
-
-    const manifest =
-        await getRemoteCobbleRealmManifest();
-
-    const remoteVersion =
-        manifest.version ||
-        "0.0.0";
-
-    const comparison =
-        compareVersions(
-            localVersion,
-            remoteVersion
-        );
-
-    return {
-        localVersion:
-            localVersion,
-
-        remoteVersion:
-            remoteVersion,
-
-        updateAvailable:
-            comparison < 0,
-
-        manifest:
-            manifest
-    };
-}
-
-
-async function downloadCobbleRealmPack(
-    url,
-    destination,
-    onProgress = null
-) {
-
-    console.log(
-        "[CobbleRealm] Téléchargement du pack..."
-    );
-
-    const response =
-        await fetch(url);
-
-    if (!response.ok) {
-        throw new Error(
-            `Erreur téléchargement CobbleRealm (${response.status})`
-        );
-    }
-
-    if (!response.body) {
-        throw new Error(
-            "Le serveur n'a retourné aucun contenu."
-        );
-    }
-
-    const totalBytes =
-        Number(response.headers.get("content-length")) || 0;
-
-    const reader =
-        response.body.getReader();
-
-    const fileStream =
-        fs.createWriteStream(destination);
-
-    let downloadedBytes = 0;
-    let lastPercent = -1;
-
-    try {
-
-        while (true) {
-
-            const {
-                done,
-                value
-            } = await reader.read();
-
-            if (done) {
-                break;
-            }
-
-            await new Promise(
-                (resolve, reject) => {
-
-                    fileStream.write(
-                        Buffer.from(value),
-                        (error) => {
-
-                            if (error) {
-                                reject(error);
-                            } else {
-                                resolve();
-                            }
-                        }
-                    );
-                }
-            );
-
-            downloadedBytes += value.byteLength;
-
-            if (totalBytes > 0) {
-
-                const percent =
-                    Math.floor(
-                        (downloadedBytes / totalBytes) * 100
-                    );
-
-                if (percent !== lastPercent) {
-
-    lastPercent = percent;
-
-    console.log(
-        `[CobbleRealm] Téléchargement : ${percent}%`
-    );
-
-    if (typeof onProgress === "function") {
-        onProgress(percent);
-    }
-}
-}
-}
-
-await new Promise(
-            (resolve, reject) => {
-
-                fileStream.end(
-                    (error) => {
-
-                        if (error) {
-                            reject(error);
-                        } else {
-                            resolve();
-                        }
-                    }
-                );
-            }
-        );
-
-    } catch (error) {
-
-        fileStream.destroy();
-
-        try {
-            fs.rmSync(
-                destination,
-                {
-                    force: true
-                }
-            );
-        } catch {}
-
-        throw error;
-    }
-
-    console.log(
-        "[CobbleRealm] Téléchargement terminé :",
-        destination
-    );
-
-    return destination;
-}
-
-async function downloadLatestCobbleRealmPack(
-    manifest
-) {
-
-    if (
-        !manifest ||
-        !Array.isArray(manifest.downloads) ||
-        manifest.downloads.length === 0
-    ) {
-        throw new Error(
-            "Aucune URL de téléchargement dans le manifest CobbleRealm."
-        );
-    }
-
-    const zipPaths = [];
-const totalParts = manifest.downloads.length;
-
-    for (let i = 0; i < manifest.downloads.length; i++) {
-
-        const tempZipPath = path.join(
-            app.getPath("temp"),
-            `CobbleRealm-update-part${i + 1}.zip`
-        );
-
-        // Supprime une éventuelle ancienne tentative
-        if (fs.existsSync(tempZipPath)) {
-            fs.rmSync(tempZipPath, {
-                force: true
-            });
-        }
-
-        console.log(
-            `[CobbleRealm] Téléchargement partie ${i + 1}/${manifest.downloads.length}...`
-        );
-
-        await downloadCobbleRealmPack(
-    manifest.downloads[i],
-    tempZipPath,
-    (partPercent) => {
-
-        const globalPercent =
-            Math.floor(
-                (
-                    (i * 100) +
-                    partPercent
-                ) / totalParts
-            );
-
-        sendLauncherUpdateStatus(
-            "download-progress",
-            `${globalPercent}%`
-        );
-    }
-);
-
-        zipPaths.push(tempZipPath);
-    }
-
-    return zipPaths;
-}
-
-
-async function extractCobbleRealmPack(
-    zipPaths
-) {
-
-    const gameRoot =
-        getCobbleRealmRoot();
-
-    if (!fs.existsSync(gameRoot)) {
-        fs.mkdirSync(gameRoot, {
-            recursive: true
-        });
-    }
-
-    if (
-        !Array.isArray(zipPaths) ||
-        zipPaths.length === 0
-    ) {
-        throw new Error(
-            "Aucune archive CobbleRealm à installer."
-        );
-    }
-
-    console.log(
-        `[CobbleRealm] Vérification de ${zipPaths.length} archive(s)...`
-    );
-
-    // ==============================
-    // TEST DE TOUTES LES ARCHIVES
-    // ==============================
-
-    for (let i = 0; i < zipPaths.length; i++) {
-
-        const tempExtractPath = path.join(
-            app.getPath("temp"),
-            `CobbleRealm-extract-test-${i + 1}`
-        );
-
-        fs.rmSync(tempExtractPath, {
-            recursive: true,
-            force: true
-        });
-
-        fs.mkdirSync(tempExtractPath, {
-            recursive: true
-        });
-
-        try {
-
-            console.log(
-                `[CobbleRealm] Vérification ZIP ${i + 1}/${zipPaths.length}...`
-            );
-
-            await extract(
-                zipPaths[i],
-                {
-                    dir: tempExtractPath
-                }
-            );
-
-            console.log(
-                `[CobbleRealm] ZIP ${i + 1} valide.`
-            );
-
-        } catch (error) {
-
-            console.error(
-                `[CobbleRealm] ZIP ${i + 1} invalide :`,
-                error
-            );
-
-            throw new Error(
-                `La partie ${i + 1} de la mise à jour est corrompue. Installation annulée.`
-            );
-
-        } finally {
-
-            fs.rmSync(tempExtractPath, {
-                recursive: true,
-                force: true
-            });
-        }
-    }
-
-
-    // ==============================
-    // SAUVEGARDE DES FICHIERS JOUEUR
-    // ==============================
-
-    const preservedFiles = [
-        "options.txt",
-        "optionsof.txt",
-        "servers.dat"
-    ];
-
-    const preservedData = new Map();
-
-    for (const fileName of preservedFiles) {
-
-        const filePath = path.join(
-            gameRoot,
-            fileName
-        );
-
-        if (fs.existsSync(filePath)) {
-
-            try {
-
-                preservedData.set(
-                    fileName,
-                    fs.readFileSync(filePath)
-                );
-
-                console.log(
-                    "[CobbleRealm] Sauvegarde fichier joueur :",
-                    fileName
-                );
-
-            } catch (error) {
-
-                console.error(
-                    "[CobbleRealm] Erreur sauvegarde fichier joueur :",
-                    fileName,
-                    error
-                );
-            }
-        }
-    }
-
-
-    // ==============================
-    // NETTOYAGE DE L'ANCIEN MODPACK
-    // ==============================
-
-    const foldersToSync = [
-        "mods",
-        "config",
-        "defaultconfigs",
-        "resourcepacks",
-        "shaderpacks",
-        "datapacks",
-        "global_packs",
-        "scripts",
-        "fancymenu_data",
-        "slideshow"
-    ];
-
-    for (const folderName of foldersToSync) {
-
-        const folderPath = path.join(
-            gameRoot,
-            folderName
-        );
-
-        if (fs.existsSync(folderPath)) {
-
-            console.log(
-                `[CobbleRealm] Suppression ancien dossier : ${folderName}`
-            );
-
-            fs.rmSync(folderPath, {
-                recursive: true,
-                force: true
-            });
-        }
-    }
-
-
-    // ==============================
-// EXTRACTION DES PARTIES
-// ==============================
-
-const zipArchives =
-    zipPaths.map(
-        zipPath => new AdmZip(zipPath)
-    );
-
-const totalEntries =
-    zipArchives.reduce(
-        (total, archive) =>
-            total + archive.getEntries().length,
-        0
-    );
-
-let extractedEntries = 0;
-let lastInstallPercent = -1;
-
-for (let i = 0; i < zipArchives.length; i++) {
-
-    const archive = zipArchives[i];
-    const entries = archive.getEntries();
-
-    console.log(
-        `[CobbleRealm] Installation partie ${i + 1}/${zipArchives.length}...`
-    );
-
-    for (const entry of entries) {
-
-        archive.extractEntryTo(
-            entry,
-            gameRoot,
-            true,
-            true
-        );
-
-        extractedEntries++;
-
-        const installPercent =
-            Math.min(
-                100,
-                Math.floor(
-                    (extractedEntries / totalEntries) * 100
-                )
-            );
-
-        if (installPercent !== lastInstallPercent) {
-
-            lastInstallPercent = installPercent;
-
-            console.log(
-                `[CobbleRealm] Installation : ${installPercent}%`
-            );
-
-            sendLauncherUpdateStatus(
-                "install-progress",
-                `${installPercent}%`
-            );
-        }
-    }
-}
-
-
-    // ==============================
-    // RESTAURATION DES FICHIERS JOUEUR
-    // ==============================
-
-    for (const [fileName, data] of preservedData.entries()) {
-
-        const filePath = path.join(
-            gameRoot,
-            fileName
-        );
-
-        try {
-
-            fs.writeFileSync(
-                filePath,
-                data
-            );
-
-            console.log(
-                "[CobbleRealm] Fichier joueur restauré :",
-                fileName
-            );
-
-        } catch (error) {
-
-            console.error(
-                "[CobbleRealm] Erreur restauration fichier joueur :",
-                fileName,
-                error
-            );
-        }
-    }
-
-
-    // ==============================
-    // SUPPRESSION DES MODS INCOMPATIBLES
-    // ==============================
-
-    const incompatibleMods = [
-        "seasonhud-fabric-1.21.1-1.13.8.jar"
-    ];
-
-    for (const modFile of incompatibleMods) {
-
-        const modPath = path.join(
-            gameRoot,
-            "mods",
-            modFile
-        );
-
-        if (fs.existsSync(modPath)) {
-
-            console.log(
-                `[CobbleRealm] Suppression du mod incompatible : ${modFile}`
-            );
-
-            fs.rmSync(modPath, {
-                force: true
-            });
-        }
-    }
-
-
-    // ==============================
-    // NETTOYAGE DES ZIP TEMPORAIRES
-    // ==============================
-
-    for (const zipPath of zipPaths) {
-
-        try {
-
-            fs.rmSync(zipPath, {
-                force: true
-            });
-
-        } catch (error) {
-
-            console.warn(
-                "[CobbleRealm] Impossible de supprimer le ZIP temporaire :",
-                zipPath,
-                error
-            );
-        }
-    }
-
-
-    console.log(
-        "[CobbleRealm] Installation complète terminée :",
-        gameRoot
-    );
-
-    return gameRoot;
-}
-
-
-function writeLocalCobbleRealmVersion(
-    version
-) {
-
-    const gameRoot =
-        getCobbleRealmRoot();
-
-    if (
-        !fs.existsSync(
-            gameRoot
-        )
-    ) {
-
-        fs.mkdirSync(
-            gameRoot,
-            {
-                recursive: true
-            }
-        );
-    }
-
-    const versionPath =
-        getLocalVersionPath();
-
-    fs.writeFileSync(
-        versionPath,
-
-        JSON.stringify(
-            {
-                version:
-                    version
-            },
-            null,
-            2
-        ),
-
-        "utf8"
-    );
-
-    console.log(
-        "[CobbleRealm] Version locale mise à jour :",
-        version
-    );
-}
-
-
-/* ==============================
-   FABRIC LOADER
-============================== */
-
-function getFabricProfileDirectory() {
-
-    return path.join(
-        getCobbleRealmRoot(),
-        "versions",
-        FABRIC_PROFILE_ID
-    );
-}
-
-
-function getFabricProfilePath() {
-
-    return path.join(
-        getFabricProfileDirectory(),
-        `${FABRIC_PROFILE_ID}.json`
-    );
-}
-
-
-function isFabricProfileValid() {
-
-    try {
-
-        const profilePath =
-            getFabricProfilePath();
-
-        if (
-            !fs.existsSync(
-                profilePath
-            )
-        ) {
-            return false;
-        }
-
-        const profile =
-            JSON.parse(
-                fs.readFileSync(
-                    profilePath,
-                    "utf8"
-                )
-            );
-
-        return (
-            profile &&
-            profile.id === FABRIC_PROFILE_ID &&
-            profile.inheritsFrom === MINECRAFT_VERSION &&
-            typeof profile.mainClass === "string" &&
-            profile.mainClass.length > 0 &&
-            Array.isArray(profile.libraries)
-        );
-
-    } catch (error) {
-
-        console.error(
-            "[CobbleRealm] Profil Fabric local invalide :",
-            error
-        );
-
-        return false;
-    }
-}
-
-
-async function ensureFabricProfile(
-    onLog = null
-) {
-
-    const log =
-        (message) => {
-
-            console.log(
-                message
-            );
-
-            if (
-                typeof onLog === "function"
-            ) {
-                onLog(
-                    message
-                );
-            }
-        };
-
-
-    if (
-        isFabricProfileValid()
-    ) {
-
-        log(
-            `[CobbleRealm] Fabric Loader ${FABRIC_LOADER_VERSION} déjà préparé.`
-        );
-
-        return FABRIC_PROFILE_ID;
-    }
-
-
-    log(
-        `[CobbleRealm] Préparation de Fabric Loader ${FABRIC_LOADER_VERSION} pour Minecraft ${MINECRAFT_VERSION}...`
-    );
-
-
-    const response =
-        await fetch(
-            FABRIC_PROFILE_URL,
-            {
-                cache:
-                    "no-store"
-            }
-        );
-
-
-    if (
-        !response.ok
-    ) {
-
-        throw new Error(
-            `Impossible de récupérer le profil Fabric (${response.status}).`
-        );
-    }
-
-
-    const profile =
-        await response.json();
-
-
-    if (
-        !profile ||
-        !profile.id ||
-        !profile.mainClass ||
-        !Array.isArray(
-            profile.libraries
-        )
-    ) {
-
-        throw new Error(
-            "Le profil Fabric reçu est invalide."
-        );
-    }
-
-
-    profile.id =
-        FABRIC_PROFILE_ID;
-
-    profile.inheritsFrom =
-        MINECRAFT_VERSION;
-
-
-    const profileDirectory =
-        getFabricProfileDirectory();
-
-
-    fs.mkdirSync(
-        profileDirectory,
-        {
-            recursive:
-                true
-        }
-    );
-
-
-    fs.writeFileSync(
-        getFabricProfilePath(),
-
-        JSON.stringify(
-            profile,
-            null,
-            2
-        ),
-
-        "utf8"
-    );
-
-
-    log(
-        `[CobbleRealm] Fabric Loader ${FABRIC_LOADER_VERSION} préparé avec succès.`
-    );
-
-
-    return FABRIC_PROFILE_ID;
-}
 
 
 /* ==============================
    FENÊTRE PRINCIPALE
 ============================== */
 
-
-function sendLauncherUpdateStatus(
-    status,
-    message
-) {
-
-    const windows =
-        BrowserWindow.getAllWindows();
-
-    for (const win of windows) {
-
-        if (
-            win &&
-            !win.isDestroyed()
-        ) {
-
-            win.webContents.send(
-                "launcher-update-status",
-                {
-                    status:
-                        status,
-
-                    message:
-                        message
-                }
-            );
-        }
-    }
-}
-
+const WINDOW_STATE_FILE = () => path.join(app.getPath("userData"), "window-state.json");
 
 function createWindow() {
 
+    let saved = null;
+    let displays = [];
+
+    try {
+        saved = windowState.readState(WINDOW_STATE_FILE());
+        displays = screen && screen.getAllDisplays ? screen.getAllDisplays() : [];
+    } catch {}
+
+    const bounds = windowState.restoreBounds(saved, displays);
+
     const win =
         new BrowserWindow({
-            width: 1200,
-            height: 700,
+            width: bounds.width,
+            height: bounds.height,
+            ...(bounds.x !== undefined ? { x: bounds.x, y: bounds.y } : {}),
 
             minWidth: 900,
             minHeight: 600,
@@ -1200,11 +918,71 @@ function createWindow() {
                 nodeIntegration:
                     false,
 
+                sandbox:
+                    true,
+
                 webSecurity:
                     true
             }
         });
 
+    mainWindow = win;
+
+    if (bounds.maximized && win.maximize) win.maximize();
+
+    /* Mémorisation de la taille et de la position (enregistrement différé : pas d'écriture pendant le glissement). */
+    let saveTimer = null;
+    let lastNormalBounds = null;
+
+    const saveWindowState = () => {
+
+        clearTimeout(saveTimer);
+        saveTimer = null;
+
+        if (!win || win.isDestroyed() || win.isMinimized()) return;
+
+        const maximized = win.isMaximized();
+        const current = maximized ? (lastNormalBounds || win.getNormalBounds()) : win.getBounds();
+
+        if (!maximized) lastNormalBounds = current;
+
+        windowState.writeState(WINDOW_STATE_FILE(), { ...current, maximized });
+    };
+
+    const scheduleSave = () => {
+
+        /* en plein écran / maximisé, on garde la dernière taille normale */
+        if (!win.isMaximized() && !win.isMinimized()) lastNormalBounds = win.getBounds();
+
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(saveWindowState, 600);
+    };
+
+    win.on("resize", scheduleSave);
+    win.on("move", scheduleSave);
+    win.on("maximize", scheduleSave);
+    win.on("unmaximize", scheduleSave);
+    win.on("close", saveWindowState);
+
+    /* Zoom automatique : à l'ouverture, puis à chaque redimensionnement. */
+    win.webContents.on("did-finish-load", () => applyZoom(win));
+    win.on("resize", () => applyZoom(win));
+    win.webContents.setVisualZoomLevelLimits(1, 1).catch(() => {});
+
+    /* L'interface ne doit jamais ouvrir de fenêtre ni naviguer ailleurs. */
+    win.webContents.setWindowOpenHandler(
+        () => ({ action: "deny" })
+    );
+
+    win.webContents.on(
+        "will-navigate",
+        (event, url) => {
+
+            if (url.split(/[?#]/)[0] !== INDEX_URL) {
+                event.preventDefault();
+            }
+        }
+    );
 
     win.loadFile(
         path.join(
@@ -1219,63 +997,138 @@ function createWindow() {
    CONNEXION MICROSOFT
 ============================== */
 
-ipcMain.handle(
+handle(
     "microsoft-login",
 
     async (event) => {
 
         const result =
             await loginMicrosoft(
-
-                async (
-                    deviceCode
-                ) => {
-
-                    event.sender.send(
-                        "microsoft-device-code",
-                        deviceCode
-                    );
-
-                    if (
-                        deviceCode &&
-                        deviceCode.verificationUri
-                    ) {
-
-                        await shell.openExternal(
-                            deviceCode.verificationUri
-                        );
-                    }
-                }
+                createDeviceCodeHandler(event.sender)
             );
+
+        currentLoginPage = null;
+        currentLoginCode = null;
+
+        /* Ferme la fenêtre du code, quelle que soit l'issue. */
+        safeSend(
+            event.sender,
+            "microsoft-device-code",
+            null
+        );
+
+        if (result && result.success) {
+            rememberPrivate(result.account && result.account.username);
+        }
 
         return result;
     }
 );
 
+/* Annulation par le joueur : la fenêtre du code se ferme tout de suite. */
+handle(
+    "microsoft-cancel-login",
 
-/* ==============================
-   SESSION MICROSOFT
-============================== */
+    async (event) => {
 
-ipcMain.handle(
+        const cancelled =
+            cancelLogin();
+
+        currentLoginPage = null;
+        currentLoginCode = null;
+
+        safeSend(
+            event.sender,
+            "microsoft-device-code",
+            null
+        );
+
+        return {
+            success: true,
+            cancelled
+        };
+    }
+);
+
+/* « Copier le code » : copie le code de la connexion en cours. */
+handle(
+    "copy-login-code",
+
+    async () => {
+
+        if (!currentLoginCode) {
+
+            return {
+                success: false,
+                error: "Aucun code en cours."
+            };
+        }
+
+        clipboard.writeText(currentLoginCode);
+
+        return { success: true };
+    }
+);
+
+/* « Rouvrir la page » : seule l'adresse Microsoft du code en cours peut être ouverte. */
+handle(
+    "open-microsoft-login-page",
+
+    async () => {
+
+        if (!currentLoginPage) {
+
+            return {
+                success: false,
+                error: "Aucune connexion en cours."
+            };
+        }
+
+        try {
+
+            await shell.openExternal(currentLoginPage);
+
+            return { success: true };
+
+        } catch {
+
+            return {
+                success: false,
+                error: "Impossible d'ouvrir la page."
+            };
+        }
+    }
+);
+
+handle(
     "microsoft-session",
 
     async () => {
 
-        return await
-            getMicrosoftSession();
+        const session =
+            await getMicrosoftSession();
+
+        if (session && session.account) {
+            rememberPrivate(session.account.username);
+        }
+
+        return session;
     }
 );
 
-
-/* ==============================
-   DÉCONNEXION MICROSOFT
-============================== */
-
-ipcMain.handle(
+handle(
     "microsoft-logout",
 
     async () => {
+
+        /* On ne change pas de compte pendant un lancement. */
+        if (launchInProgress) {
+
+            return {
+                success: false,
+                error: "Impossible de se déconnecter pendant le lancement de Minecraft."
+            };
+        }
 
         return await
             logoutMicrosoft();
@@ -1287,15 +1140,24 @@ ipcMain.handle(
    TEST MINECRAFT SERVICES
 ============================== */
 
-ipcMain.handle(
+handle(
     "minecraft-test",
 
-    async () => {
+    async (event) => {
 
         try {
 
             const microsoftResult =
-                await loginMicrosoft();
+                await loginMicrosoft(
+                    createDeviceCodeHandler(event.sender)
+                );
+
+            /* Ferme la fenêtre de code, qu'elle ait servi ou non. */
+            safeSend(
+                event.sender,
+                "microsoft-device-code",
+                null
+            );
 
             if (
                 !microsoftResult ||
@@ -1312,11 +1174,10 @@ ipcMain.handle(
                     error:
                         microsoftResult &&
                         microsoftResult.error
-                            ? microsoftResult.error
+                            ? redactSecrets(microsoftResult.error)
                             : "Impossible de récupérer un token Microsoft."
                 };
             }
-
 
             const minecraftResult =
                 await loginMinecraft(
@@ -1329,7 +1190,7 @@ ipcMain.handle(
 
             console.error(
                 "[Minecraft Test] Erreur :",
-                error
+                redactSecrets(error && error.stack ? error.stack : error)
             );
 
             return {
@@ -1339,8 +1200,7 @@ ipcMain.handle(
                     "launcher",
 
                 error:
-                    error.message ||
-                    "Erreur inconnue pendant le test Minecraft."
+                    safeMessage(error, "Erreur inconnue pendant le test Minecraft.")
             };
         }
     }
@@ -1362,73 +1222,140 @@ function getSettingsPath() {
 }
 
 
-function readLauncherSettings() {
+/*
+ * Défaut de RAM : la valeur recommandée par le manifest (dernière connue),
+ * limitée à ce que la machine peut offrir ; 4 Go maximum sous 12 Go de RAM.
+ */
+function getDefaultRam() {
+
+    const limits =
+        getRamLimits();
+
+    const lock =
+        getUpdater().status().lock;
+
+    const recommended =
+        lock && Number(lock.recommendedRamGb);
+
+    if (!recommended) {
+        return limits.defaultRam;
+    }
+
+    const totalGb =
+        os.totalmem() / (1024 ** 3);
+
+    return Math.min(
+        limits.maxRam,
+        totalGb >= 12 ? recommended : 4
+    );
+}
+
+
+/*
+ * Réglages du launcher (userData/settings.json). Toute valeur est validée à la lecture ET à l'écriture :
+ * une valeur inconnue ou abîmée retombe toujours sur la valeur par défaut.
+ */
+const UI_SCALES = ["auto", 1, 1.1, 1.25, 1.5];
+/* « Fermer le launcher » n'est volontairement pas proposé : cela couperait les tuyaux de sortie du jeu. */
+const ON_LAUNCH_CHOICES = ["keep", "minimize"];
+const MOTION_CHOICES = ["auto", "on", "off"];
+
+const SETTINGS_DEFAULTS = {
+    uiScale: "auto",
+    onLaunch: "keep",
+    reduceMotion: "auto",
+    notifications: true
+};
+
+function normalizeSettings(data) {
+
+    const source = data && typeof data === "object" ? data : {};
+
+    const scale =
+        source.uiScale === "auto"
+            ? "auto"
+            : UI_SCALES.find((value) => value !== "auto" && value === Number(source.uiScale));
+
+    return {
+        uiScale: scale === undefined ? SETTINGS_DEFAULTS.uiScale : scale,
+
+        onLaunch: ON_LAUNCH_CHOICES.includes(source.onLaunch) ? source.onLaunch : SETTINGS_DEFAULTS.onLaunch,
+
+        reduceMotion: MOTION_CHOICES.includes(source.reduceMotion) ? source.reduceMotion : SETTINGS_DEFAULTS.reduceMotion,
+
+        notifications: typeof source.notifications === "boolean" ? source.notifications : SETTINGS_DEFAULTS.notifications
+    };
+}
+
+
+function readSettingsFile() {
 
     try {
 
-        const settingsPath =
-            getSettingsPath();
+        return JSON.parse(fs.readFileSync(getSettingsPath(), "utf8"));
 
-        if (
-            !fs.existsSync(
-                settingsPath
-            )
-        ) {
+    } catch {
 
-            return {
-                ram: 8
-            };
-        }
-
-
-        const data =
-            JSON.parse(
-                fs.readFileSync(
-                    settingsPath,
-                    "utf8"
-                )
-            );
-
-
-        return {
-            ram:
-                Math.max(
-                    2,
-
-                    Math.min(
-                        Number(
-                            data.ram
-                        ) || 8,
-                        16
-                    )
-                )
-        };
-
-    } catch (error) {
-
-        console.error(
-            "[CobbleRealm] Erreur lecture paramètres :",
-            error
-        );
-
-        return {
-            ram: 8
-        };
+        return null;
     }
 }
 
 
-ipcMain.handle(
+function readLauncherSettings() {
+
+    const data = readSettingsFile();
+
+    return {
+        ram: data && data.ram !== undefined ? clampRam(data.ram) : getDefaultRam(),
+        ...normalizeSettings(data)
+    };
+}
+
+
+/* Fusionne les changements demandés avec les réglages actuels, valide, écrit tout. */
+function saveLauncherSettings(changes) {
+
+    const current = readSettingsFile() || {};
+    const asked = changes && typeof changes === "object" ? changes : {};
+
+    const merged = {
+        ...current,
+        ...(asked.ram !== undefined ? { ram: clampRam(asked.ram) } : {}),
+        ...normalizeSettings({ ...current, ...asked })
+    };
+
+    fs.mkdirSync(path.dirname(getSettingsPath()), { recursive: true });
+
+    fs.writeFileSync(
+        getSettingsPath(),
+        JSON.stringify(merged, null, 2),
+        "utf8"
+    );
+
+    return readLauncherSettings();
+}
+
+
+handle(
     "get-launcher-settings",
 
     async () => {
 
-        return readLauncherSettings();
+        const limits =
+            getRamLimits();
+
+        return {
+            ...readLauncherSettings(),
+            minRam: limits.minRam,
+            maxRam: limits.maxRam,
+            defaultRam: getDefaultRam(),
+            recommendedRam: Math.min(limits.maxRam, resolveVersions(null).recommendedRamGb)
+        };
     }
 );
 
 
-ipcMain.handle(
+handle(
     "save-launcher-settings",
 
     async (
@@ -1438,38 +1365,14 @@ ipcMain.handle(
 
         try {
 
-            const ram =
-                Math.max(
-                    2,
+            const saved =
+                saveLauncherSettings(settings);
 
-                    Math.min(
-                        Number(
-                            settings.ram
-                        ) || 8,
-                        16
-                    )
-                );
-
-
-            fs.writeFileSync(
-                getSettingsPath(),
-
-                JSON.stringify(
-                    {
-                        ram:
-                            ram
-                    },
-                    null,
-                    2
-                ),
-
-                "utf8"
-            );
-
+            applyZoomToAllWindows();
 
             return {
                 success: true,
-                ram: ram
+                ...saved
             };
 
         } catch (error) {
@@ -1482,60 +1385,196 @@ ipcMain.handle(
             return {
                 success: false,
                 error:
-                    error.message
+                    safeMessage(error, "Impossible d'enregistrer les paramètres.")
             };
         }
     }
 );
 
 
-ipcMain.handle(
+/* ==============================
+   TAILLE DE L'INTERFACE (zoom)
+   Auto : l'interface grandit avec la fenêtre sur les grands écrans (jamais en dessous de 100 %).
+============================== */
+
+/* Réservé aux tests (mode développement explicite) : fixe la taille du CONTENU de la fenêtre. */
+if (DEV_MODE) {
+
+    handle(
+        "dev-resize-window",
+
+        async (event, width, height) => {
+
+            if (!mainWindow || mainWindow.isDestroyed()) {
+                return { success: false };
+            }
+
+            mainWindow.setContentSize(Math.round(Number(width)), Math.round(Number(height)));
+
+            applyZoom(mainWindow);
+
+            return { success: true, size: mainWindow.getContentSize() };
+        }
+    );
+}
+
+function autoZoomFor(width, height) {
+
+    const factor = Math.min(width / 1280, height / 760);
+
+    return Math.max(1, Math.min(1.5, Math.floor(factor * 20) / 20));
+}
+
+function zoomFor(win) {
+
+    const setting = readLauncherSettings().uiScale;
+
+    if (setting !== "auto") {
+        return Number(setting);
+    }
+
+    const [width, height] = win.getContentSize();
+
+    return autoZoomFor(width, height);
+}
+
+function applyZoom(win) {
+
+    if (!win || win.isDestroyed()) {
+        return;
+    }
+
+    try {
+
+        const factor = zoomFor(win);
+
+        if (win.webContents.getZoomFactor() !== factor) {
+            win.webContents.setZoomFactor(factor);
+        }
+
+    } catch { /* le zoom est un confort, jamais bloquant */ }
+}
+
+/* ==============================
+   COMPORTEMENT PENDANT LA PARTIE
+============================== */
+
+let minimizedForGame = false;
+
+function getMainWindow() {
+
+    const win =
+        mainWindow && !mainWindow.isDestroyed()
+            ? mainWindow
+            : BrowserWindow.getAllWindows()[0];
+
+    return win && !win.isDestroyed() ? win : null;
+}
+
+/* Réglage « Réduire pendant la partie » : le launcher se réduit au lancement... */
+function minimizeForGame() {
+
+    if (readLauncherSettings().onLaunch !== "minimize") {
+        return;
+    }
+
+    const win = getMainWindow();
+
+    if (win) {
+        win.minimize();
+        minimizedForGame = true;
+    }
+}
+
+/* ... et revient à l'écran quand Minecraft se ferme. */
+function restoreAfterGame() {
+
+    if (!minimizedForGame) {
+        return;
+    }
+
+    minimizedForGame = false;
+
+    const win = getMainWindow();
+
+    if (win) {
+
+        if (win.isMinimized()) {
+            win.restore();
+        }
+
+        win.show();
+        win.focus();
+    }
+}
+
+
+function applyZoomToAllWindows() {
+
+    for (const win of BrowserWindow.getAllWindows()) {
+        applyZoom(win);
+    }
+}
+
+
+/* ==============================
+   STATUT DE LA VERSION
+   (même module et même requête que la mise à jour)
+============================== */
+
+handle(
     "check-cobblerealm-update",
 
     async () => {
 
-        try {
+        const check =
+            lastCheck || await runCheck();
 
-            const result =
-                await checkCobbleRealmUpdate();
-
-            return {
-                success: true,
-
-                localVersion:
-                    result.localVersion,
-
-                remoteVersion:
-                    result.remoteVersion,
-
-                updateAvailable:
-                    result.updateAvailable
-            };
-
-        } catch (error) {
-
-            console.error(
-                "[CobbleRealm] Erreur vérification mise à jour :",
-                error
-            );
+        if (check.fatal) {
 
             return {
                 success: false,
-
-                error:
-                    error.message
+                error: check.error.message,
+                message: describeCheck(check)
             };
         }
+
+        return {
+            success: true,
+
+            localVersion:
+                check.installedVersion,
+
+            remoteVersion:
+                check.remoteVersion,
+
+            updateAvailable:
+                check.updateAvailable,
+
+            offline:
+                Boolean(check.offline),
+
+            filesToDownload:
+                check.filesToDownload || 0,
+
+            bytesToDownload:
+                check.bytesToDownload || 0,
+
+            message:
+                describeCheck(check)
+        };
     }
 );
 
 
-ipcMain.handle(
+handle(
     "get-launcher-news",
 
     async () => {
         if (!launcherNewsCache) {
-            launcherNewsCache = await fetchLauncherNews();
+            refreshChangelogOnline().catch(() => {});
+
+        launcherNewsCache = await fetchLauncherNews();
         }
 
         return launcherNewsCache;
@@ -1544,436 +1583,348 @@ ipcMain.handle(
 
 
 /* ==============================
-   JAVA 21 COBBLEREALM
+   RÉPARATION DE L'INSTALLATION
 ============================== */
 
-const JAVA_21_URL =
-    "https://api.adoptium.net/v3/binary/latest/21/ga/windows/x64/jre/hotspot/normal/eclipse";
+handle(
+    "repair-installation",
 
+    async (event) => {
 
-function getCobbleRealmJavaPath() {
+        if (launchInProgress) {
 
-    return path.join(
-        getCobbleRealmRoot(),
-        "runtime",
-        "java21",
-        "bin",
-        "java.exe"
-    );
-}
-
-
-async function downloadJava21(
-    url,
-    destination,
-    onProgress = null
-) {
-
-    console.log(
-        "[CobbleRealm] Téléchargement de Java 21..."
-    );
-
-    const response =
-        await fetch(
-            url,
-            {
-                redirect: "follow"
-            }
-        );
-
-    if (!response.ok) {
-
-        throw new Error(
-            `Impossible de télécharger Java 21 (${response.status}).`
-        );
-    }
-
-    if (!response.body) {
-
-        throw new Error(
-            "Aucun contenu reçu pendant le téléchargement de Java 21."
-        );
-    }
-
-    const totalBytes =
-        Number(
-            response.headers.get(
-                "content-length"
-            )
-        ) || 0;
-
-    const reader =
-        response.body.getReader();
-
-    const fileStream =
-        fs.createWriteStream(
-            destination
-        );
-
-    let downloadedBytes = 0;
-    let lastPercent = -1;
-
-    try {
-
-        while (true) {
-
-            const {
-                done,
-                value
-            } = await reader.read();
-
-            if (done) {
-                break;
-            }
-
-            await new Promise(
-                (resolve, reject) => {
-
-                    fileStream.write(
-                        Buffer.from(value),
-                        error => {
-
-                            if (error) {
-                                reject(error);
-                            } else {
-                                resolve();
-                            }
-                        }
-                    );
-                }
-            );
-
-            downloadedBytes +=
-                value.byteLength;
-
-            if (totalBytes > 0) {
-
-                const percent =
-                    Math.floor(
-                        downloadedBytes /
-                        totalBytes *
-                        100
-                    );
-
-                if (
-                    percent !==
-                    lastPercent
-                ) {
-
-                    lastPercent =
-                        percent;
-
-                    console.log(
-                        `[CobbleRealm] Java 21 : ${percent}%`
-                    );
-
-                    if (
-                        typeof onProgress ===
-                        "function"
-                    ) {
-
-                        onProgress(
-                            percent
-                        );
-                    }
-                }
-            }
+            return {
+                success: false,
+                error: "Une opération est déjà en cours."
+            };
         }
 
-        await new Promise(
-            (resolve, reject) => {
-
-                fileStream.end(
-                    error => {
-
-                        if (error) {
-                            reject(error);
-                        } else {
-                            resolve();
-                        }
-                    }
-                );
-            }
-        );
-
-    } catch (error) {
-
-        fileStream.destroy();
+        launchInProgress = true;
 
         try {
 
-            fs.rmSync(
-                destination,
-                {
-                    force: true
-                }
+            const result =
+                await getUpdater().repair();
+
+            lastCheck = {
+                ok: true,
+                offline: false,
+                valid: true,
+                installedVersion: result.version,
+                remoteVersion: result.version,
+                updateAvailable: false
+            };
+
+            sendLauncherUpdateStatus(
+                    "ready",
+                    describeCheck(lastCheck),
+                    { updateAvailable: false }
+                );
+
+            return {
+                success: true,
+                version: result.version
+            };
+
+        } catch (error) {
+
+            sendLaunchError(
+                event.sender,
+                "update",
+                error
             );
 
-        } catch {}
+            return {
+                success: false,
+                error: safeMessage(error, "La réparation a échoué."),
+                code: error.code
+            };
 
-        throw error;
+        } finally {
+
+            launchInProgress = false;
+        }
+    }
+);
+
+
+/* ==============================
+   INFORMATIONS AFFICHÉES : CHANGELOG, SERVEUR, VERSIONS
+============================== */
+
+const changelogPaths = () => ({
+    embeddedPath: path.join(__dirname, "CHANGELOG.md"),
+    cachePath: path.join(app.getPath("userData"), "changelog-cache.json")
+});
+
+let changelogData = null;
+
+function getChangelogData() {
+
+    if (!changelogData) {
+        changelogData = changelogModule.loadLocal(changelogPaths());
     }
 
-    console.log(
-        "[CobbleRealm] Java 21 téléchargé."
-    );
+    return changelogData;
 }
 
+/* Essaie la source en ligne sans bloquer : si elle répond, la page est mise à jour. */
+async function refreshChangelogOnline() {
 
-async function ensureJava21(
-    onStatus = null
-) {
+    const online = await changelogModule.loadOnline({
+        url: CHANGELOG_URL,
+        cachePath: changelogPaths().cachePath,
+        allowLocal: DEV_MODE
+    });
 
-    const javaPath =
-        getCobbleRealmJavaPath();
+    if (online) {
 
-    /*
-     * Java déjà installé par CobbleRealm
-     */
-
-    if (
-        fs.existsSync(
-            javaPath
-        )
-    ) {
-
-        console.log(
-            "[CobbleRealm] Java 21 CobbleRealm déjà installé :",
-            javaPath
-        );
-
-        return javaPath;
+        changelogData = online;
+        broadcast("changelog-updated", online);
     }
-
-
-    console.log(
-        "[CobbleRealm] Java 21 CobbleRealm absent."
-    );
-
-
-    if (
-        typeof onStatus ===
-        "function"
-    ) {
-
-        onStatus(
-            "Installation de Java 21..."
-        );
-    }
-
-
-    const runtimeRoot =
-        path.join(
-            getCobbleRealmRoot(),
-            "runtime"
-        );
-
-    const javaDirectory =
-        path.join(
-            runtimeRoot,
-            "java21"
-        );
-
-    const tempDirectory =
-        path.join(
-            runtimeRoot,
-            "java21-temp"
-        );
-
-    const zipPath =
-        path.join(
-            runtimeRoot,
-            "java21.zip"
-        );
-
-
-    fs.mkdirSync(
-        runtimeRoot,
-        {
-            recursive: true
-        }
-    );
-
-
-    /*
-     * Nettoyage ancienne tentative
-     */
-
-    fs.rmSync(
-        tempDirectory,
-        {
-            recursive: true,
-            force: true
-        }
-    );
-
-    fs.rmSync(
-        zipPath,
-        {
-            force: true
-        }
-    );
-
-
-    /*
-     * Téléchargement
-     */
-
-    await downloadJava21(
-        JAVA_21_URL,
-        zipPath,
-        percent => {
-
-            if (
-                typeof onStatus ===
-                "function"
-            ) {
-
-                onStatus(
-                    `Téléchargement de Java 21... ${percent}%`
-                );
-            }
-        }
-    );
-
-
-    /*
-     * Extraction
-     */
-
-    if (
-        typeof onStatus ===
-        "function"
-    ) {
-
-        onStatus(
-            "Installation de Java 21..."
-        );
-    }
-
-
-    fs.mkdirSync(
-        tempDirectory,
-        {
-            recursive: true
-        }
-    );
-
-
-    await extract(
-        zipPath,
-        {
-            dir:
-                tempDirectory
-        }
-    );
-
-
-    /*
-     * Le ZIP Adoptium contient un dossier racine
-     * dont le nom dépend de la version.
-     */
-
-    const entries =
-        fs.readdirSync(
-            tempDirectory,
-            {
-                withFileTypes: true
-            }
-        );
-
-    const javaFolder =
-        entries.find(
-            entry =>
-                entry.isDirectory()
-        );
-
-
-    if (!javaFolder) {
-
-        throw new Error(
-            "Impossible de trouver Java 21 dans l'archive téléchargée."
-        );
-    }
-
-
-    const extractedJava =
-        path.join(
-            tempDirectory,
-            javaFolder.name
-        );
-
-
-    /*
-     * Remplacement du runtime
-     */
-
-    fs.rmSync(
-        javaDirectory,
-        {
-            recursive: true,
-            force: true
-        }
-    );
-
-
-    fs.renameSync(
-        extractedJava,
-        javaDirectory
-    );
-
-
-    /*
-     * Nettoyage
-     */
-
-    fs.rmSync(
-        tempDirectory,
-        {
-            recursive: true,
-            force: true
-        }
-    );
-
-    fs.rmSync(
-        zipPath,
-        {
-            force: true
-        }
-    );
-
-
-    /*
-     * Vérification finale
-     */
-
-    if (
-        !fs.existsSync(
-            javaPath
-        )
-    ) {
-
-        throw new Error(
-            "Java 21 a été téléchargé mais java.exe est introuvable."
-        );
-    }
-
-
-    console.log(
-        "[CobbleRealm] Java 21 installé avec succès :",
-        javaPath
-    );
-
-
-    return javaPath;
 }
+
+handle(
+    "get-changelog",
+
+    async () => getChangelogData()
+);
+
+
+/* Statut du serveur : vrai test de connexion, au plus une fois toutes les 20 secondes. */
+let serverStatusCache = null;
+
+handle(
+    "get-server-status",
+
+    async () => {
+
+        if (!SERVER_ADDRESS) {
+            return { configured: false };
+        }
+
+        if (serverStatusCache && Date.now() - serverStatusCache.at < (DEV_MODE ? 0 : 20000)) {
+            return serverStatusCache.value;
+        }
+
+        const value = {
+            configured: true,
+            ...(await getServerStatus(SERVER_ADDRESS))
+        };
+
+        serverStatusCache = { at: Date.now(), value };
+
+        return value;
+    }
+);
+
+
+/* Versions réellement installées : launcher, pack, Minecraft, Fabric. */
+handle(
+    "get-app-info",
+
+    async () => {
+
+        const installed = getUpdater().status();
+        const versions = resolveVersions(null);
+
+        return {
+            launcher: app.getVersion(),
+            pack: installed.valid ? installed.version : null,
+            minecraft: versions.minecraft,
+            fabric: versions.fabricLoader,
+            java: versions.java
+        };
+    }
+);
+
+
+/* Ouvre le dossier du jeu : l'adresse est choisie par le launcher, jamais par la page. */
+handle(
+    "open-game-folder",
+
+    async () => {
+
+        try {
+
+            const root = getCobbleRealmRoot();
+
+            fs.mkdirSync(root, { recursive: true });
+
+            const failure = await shell.openPath(root);
+
+            return failure
+                ? { success: false, error: "Impossible d'ouvrir le dossier du jeu." }
+                : { success: true };
+
+        } catch {
+
+            return { success: false, error: "Impossible d'ouvrir le dossier du jeu." };
+        }
+    }
+);
+
+
+/* ==============================
+   ANNULATION DE LA MISE À JOUR
+   (avant l'installation des fichiers ; ce qui est déjà téléchargé est conservé pour la reprise)
+============================== */
+
+handle(
+    "cancel-update",
+
+    async () => {
+
+        return {
+            success: true,
+            ...getUpdater().cancel()
+        };
+    }
+);
+
+
+/* ==============================
+   RAPPORT DE SUPPORT
+   (jetons, e-mail, pseudo, identifiants et chemins personnels sont masqués)
+============================== */
+
+handle(
+    "copy-support-report",
+
+    async () => {
+
+        try {
+
+            const report = currentReport();
+
+            clipboard.writeText(report);
+
+            return {
+                success: true,
+                lines: report.split("\n").length
+            };
+
+        } catch (error) {
+
+            return {
+                success: false,
+                error: "Impossible de copier le rapport."
+            };
+        }
+    }
+);
+
+
+/* ==============================
+   CONSOLE : COPIER, EXPORTER, EFFACER
+   (le journal est déjà débarrassé des jetons ; données personnelles masquées à l'export)
+============================== */
+
+function fullJournalReport() {
+
+    const installed = getUpdater().status();
+    const versions = resolveVersions(null);
+
+    return buildReport({
+        info: {
+            launcher: app.getVersion(),
+            pack: installed.version,
+            minecraft: versions.minecraft,
+            fabric: versions.fabricLoader,
+            java: String(versions.java),
+            ramAllocatedGb: readLauncherSettings().ram
+        },
+        error: lastError,
+        logs: recentLogs,
+        maxLines: MAX_LOG_LINES,
+        title: "=== Journal CobbleRealm ===",
+        privateStrings: [...privateStrings]
+    });
+}
+
+handle(
+    "copy-console",
+
+    async () => {
+
+        clipboard.writeText(fullJournalReport());
+
+        return { success: true, lines: recentLogs.length };
+    }
+);
+
+handle(
+    "export-logs",
+
+    async (event) => {
+
+        const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "").replace(/^(\d{8})(\d{4})$/, "$1-$2");
+
+        const choice = await dialog.showSaveDialog(getMainWindow() || undefined, {
+            title: "Enregistrer le journal",
+            defaultPath: `cobblerealm-journal-${stamp}.txt`,
+            filters: [{ name: "Fichier texte", extensions: ["txt"] }]
+        });
+
+        if (choice.canceled || !choice.filePath) {
+            return { success: false, cancelled: true };
+        }
+
+        try {
+
+            fs.writeFileSync(choice.filePath, fullJournalReport(), "utf8");
+
+            /* on ne renvoie que le nom du fichier : jamais le chemin (il contient le nom d'utilisateur) */
+            return { success: true, fileName: path.basename(choice.filePath) };
+
+        } catch {
+
+            return { success: false, error: "Impossible d'enregistrer le fichier." };
+        }
+    }
+);
+
+handle(
+    "clear-logs",
+
+    async () => {
+
+        recentLogs.length = 0;
+
+        return { success: true };
+    }
+);
+
+
+/* ==============================
+   MISE À JOUR DU LAUNCHER
+============================== */
+
+handle(
+    "install-launcher-update",
+
+    async () => {
+
+        if (launchInProgress || !launcherSelfUpdater) {
+
+            return {
+                success: false,
+                error: "Impossible d'installer la mise à jour pour le moment."
+            };
+        }
+
+        launcherSelfUpdater.installNow();
+
+        return { success: true };
+    }
+);
 
 
 /* ==============================
    LANCEMENT MINECRAFT
 ============================== */
 
-ipcMain.handle(
+handle(
     "launch-minecraft",
 
     async (
@@ -1981,14 +1932,45 @@ ipcMain.handle(
         launchOptions = {}
     ) => {
 
-        try {
+        if (launchInProgress) {
 
-            console.log(
-                "[TEST RAM] Valeur reçue du launcher :",
-                launchOptions.ram,
-                "Go"
+            return {
+                success: false,
+                step: "launch",
+                error: "Minecraft est déjà en cours de lancement."
+            };
+        }
+
+        launchInProgress = true;
+
+        let removeGameListeners = () => {};
+        let step = "update";
+
+        let gameStarted = false;
+
+        const status = (message) => {
+
+            pushLog(`[Launcher] ${message}`);
+
+            safeSend(
+                event.sender,
+                "minecraft-status",
+                { type: "status", message }
             );
+        };
 
+        const relayLog = (message) => {
+
+            pushLog(message);
+
+            safeSend(
+                event.sender,
+                "minecraft-log",
+                message
+            );
+        };
+
+        try {
 
             console.log(
                 "[CobbleRealm] Préparation du lancement..."
@@ -1996,12 +1978,74 @@ ipcMain.handle(
 
 
             /*
-             * 1) TOKEN MICROSOFT
+             * 1) MISE À JOUR DU MODPACK
+             * Le jeu ne démarre JAMAIS tant que cette étape n'a pas réussi.
+             */
+
+            status("Vérification de la mise à jour...");
+
+            const syncResult =
+                await getUpdater().sync();
+
+            if (syncResult.offline) {
+
+                safeSend(
+                    event.sender,
+                    "update-warning",
+                    {
+                        message:
+                            `Hors-ligne : lancement de la version installée (v${syncResult.version}). ` +
+                            "Certaines nouveautés peuvent manquer."
+                    }
+                );
+            }
+
+            let manifest = null;
+
+            if (!syncResult.offline) {
+
+                try {
+                    manifest = await getUpdater().getManifest();
+                } catch { /* on retombera sur la dernière installation connue */ }
+
+                lastCheck = {
+                    ok: true,
+                    offline: false,
+                    valid: true,
+                    installedVersion: syncResult.version,
+                    remoteVersion: syncResult.version,
+                    updateAvailable: false
+                };
+
+                sendLauncherUpdateStatus(
+                    "ready",
+                    describeCheck(lastCheck),
+                    { updateAvailable: false }
+                );
+            }
+
+            const versions =
+                resolveVersions(manifest);
+
+            step = "microsoft";
+
+
+            /*
+             * 2) TOKEN MICROSOFT
+             * (affiche le code d'appareil si la session a expiré)
              */
 
             const microsoftResult =
-                await loginMicrosoft();
+                await loginMicrosoft(
+                    createDeviceCodeHandler(event.sender)
+                );
 
+            /* Ferme la fenêtre de code, qu'elle ait servi ou non. */
+            safeSend(
+                event.sender,
+                "microsoft-device-code",
+                null
+            );
 
             if (
                 !microsoftResult ||
@@ -2009,37 +2053,64 @@ ipcMain.handle(
                 !microsoftResult.accessToken
             ) {
 
-                throw new Error(
-                    "Impossible de récupérer la session Microsoft."
+                const failure = new Error(
+                    microsoftResult && microsoftResult.error
+                        ? redactSecrets(microsoftResult.error)
+                        : "Connexion Microsoft impossible."
                 );
+
+                failure.code = microsoftResult && microsoftResult.code;
+
+                throw failure;
             }
+
+            /* Le compte et le pseudo ne doivent jamais apparaître dans un rapport. */
+            rememberPrivate(
+                microsoftResult.account && microsoftResult.account.username
+            );
+
+            step = "minecraft-auth";
 
 
             /*
-             * 2) TOKEN MINECRAFT
+             * 3) TOKEN MINECRAFT
              */
 
             const minecraftResult =
                 await loginMinecraft(
-
                     microsoftResult.accessToken,
-
-                    (
-                        message
-                    ) => {
-
-                        event.sender.send(
-                            "minecraft-log",
-                            message
-                        );
-                    }
+                    relayLog
                 );
-
 
             if (
                 !minecraftResult ||
                 !minecraftResult.success
             ) {
+
+                launchInProgress = false;
+
+                const authError = {
+                    status:
+                        minecraftResult
+                            ? minecraftResult.status
+                            : null,
+
+                    message:
+                        minecraftResult && minecraftResult.error
+                            ? redactSecrets(minecraftResult.error)
+                            : "Impossible de se connecter à Minecraft Services."
+                };
+
+                const payload =
+                    buildErrorPayload("minecraft-auth", authError);
+
+                safeSend(event.sender, "launch-error", payload);
+
+                safeSend(
+                    event.sender,
+                    "minecraft-status",
+                    { type: "error", message: payload.message }
+                );
 
                 return {
                     success:
@@ -2048,19 +2119,16 @@ ipcMain.handle(
                     step:
                         "minecraft-auth",
 
+                    code:
+                        payload.code,
+
                     error:
-                        minecraftResult &&
-                        minecraftResult.error
-                            ? minecraftResult.error
-                            : "Impossible de se connecter à Minecraft Services.",
+                        payload.message,
 
                     status:
-                        minecraftResult
-                            ? minecraftResult.status
-                            : null
+                        authError.status
                 };
             }
-
 
             if (
                 !minecraftResult.accessToken ||
@@ -2072,99 +2140,63 @@ ipcMain.handle(
                 );
             }
 
-
             const profile =
                 minecraftResult.profile;
 
+            rememberPrivate(profile.name, profile.id);
+
+            step = "java";
+
 
             /*
-             * 3) DOSSIER COBBLEREALM
+             * 4) JAVA ET FABRIC (versions données par le manifest)
              */
 
             const gameRoot =
                 getCobbleRealmRoot();
 
-const javaPath =
-    await ensureJava21(
-        message => {
-
-            event.sender.send(
-                "minecraft-status",
-                {
-                    type:
-                        "status",
-
-                    message:
-                        message
-                }
-            );
-        }
-    );
-
-
-console.log(
-    "[CobbleRealm] Java utilisé :",
-    javaPath
-);
-
+            const javaPath =
+                await ensureJava({
+                    runtimeRoot: path.join(gameRoot, "runtime"),
+                    required: versions.java,
+                    allowLocal: DEV_MODE,
+                    onStatus: status
+                });
 
             console.log(
-                "[CobbleRealm] Dossier Minecraft :",
-                gameRoot
+                "[CobbleRealm] Java utilisé :",
+                javaPath
             );
 
+            step = "fabric";
 
-            event.sender.send(
-                "minecraft-status",
-                {
-                    type:
-                        "status",
+            status(`Préparation de Fabric ${versions.fabricLoader}...`);
 
-                    message:
-                        "Préparation de Minecraft..."
-                }
-            );
+            const fabricProfileId =
+                await ensureFabricProfile({
+                    root: gameRoot,
+                    minecraft: versions.minecraft,
+                    fabricLoader: versions.fabricLoader,
+                    allowLocal: DEV_MODE,
+                    onLog: relayLog
+                });
 
-/*
- * 4) FABRIC LOADER
- */
-
-event.sender.send(
-    "minecraft-status",
-    {
-        type:
-            "status",
-
-        message:
-            `Préparation de Fabric ${FABRIC_LOADER_VERSION}...`
-    }
-);
-
-
-const fabricProfileId =
-    await ensureFabricProfile(
-        (
-            message
-        ) => {
-
-            event.sender.send(
-                "minecraft-log",
-                message
-            );
-        }
-    );
+            step = "launch";
 
 
             /*
-             * 4) OPTIONS DE LANCEMENT
+             * 5) OPTIONS DE LANCEMENT
              */
+
+            const ram =
+                clampRam(launchOptions.ram || versions.recommendedRamGb);
 
             const options = {
 
-    javaPath:
-        javaPath,
+                javaPath:
+                    javaPath,
 
-    authorization: {
+                authorization: {
 
                     access_token:
                         minecraftResult.accessToken,
@@ -2187,47 +2219,30 @@ const fabricProfileId =
                     }
                 },
 
-
                 root:
-    gameRoot,
+                    gameRoot,
 
-version: {
+                version: {
 
-    number:
-        MINECRAFT_VERSION,
+                    number:
+                        versions.minecraft,
 
-    type:
-        "release",
+                    type:
+                        "release",
 
-    custom:
-        fabricProfileId
-},
+                    custom:
+                        fabricProfileId
+                },
 
-memory: {
+                memory: {
 
                     max:
-                        `${Math.max(
-                            2,
-                            Math.min(
-                                Number(
-                                    launchOptions.ram
-                                ) || 8,
-                                16
-                            )
-                        )}G`,
+                        `${ram}G`,
 
                     min:
-                        "2G"
+                        `${Math.min(2, ram)}G`
                 }
             };
-
-
-            console.log(
-                "[CobbleRealm] RAM reçue :",
-                launchOptions.ram,
-                "Go"
-            );
-
 
             console.log(
                 "[CobbleRealm] RAM envoyée à Minecraft :",
@@ -2236,7 +2251,10 @@ memory: {
 
 
             /*
-             * 5) ÉVÉNEMENTS
+             * 6) ÉVÉNEMENTS
+             * Les écouteurs sont retirés dès la fermeture du jeu
+             * (ou en cas d'échec) pour ne jamais s'accumuler.
+             * Tout texte est masqué (jeton) avant affichage.
              */
 
             const debugListener =
@@ -2245,21 +2263,21 @@ memory: {
                 ) => {
 
                     const message =
-                        String(
-                            data
-                        );
+                        redactSecrets(data);
 
                     console.log(
                         "[Minecraft DEBUG]",
                         message
                     );
 
-                    event.sender.send(
+                    pushLog(message);
+
+                    safeSend(
+                        event.sender,
                         "minecraft-log",
                         message
                     );
                 };
-
 
             const dataListener =
                 (
@@ -2267,101 +2285,111 @@ memory: {
                 ) => {
 
                     const message =
-                        String(
-                            data
-                        );
+                        redactSecrets(data);
 
                     console.log(
                         "[Minecraft]",
                         message
                     );
 
-                    event.sender.send(
+                    pushLog(message);
+
+                    safeSend(
+                        event.sender,
                         "minecraft-log",
                         message
                     );
                 };
-
 
             const progressListener =
                 (
                     progress
                 ) => {
 
-                    event.sender.send(
+                    safeSend(
+                        event.sender,
                         "minecraft-progress",
                         progress
                     );
                 };
 
+            const closeListener =
+                (code) => {
 
-            launcher.on(
-                "debug",
-                debugListener
-            );
+                    console.log(
+                        "[CobbleRealm] Minecraft fermé. Code :",
+                        code
+                    );
 
+                    safeSend(
+                        event.sender,
+                        "minecraft-status",
+                        {
+                            type: "closed",
+                            message: "Minecraft fermé."
+                        }
+                    );
 
-            launcher.on(
-                "data",
-                dataListener
-            );
+                    /*
+                     * Arrêt avec une erreur : on prévient le joueur (une fois le jeu réellement démarré :
+                     * un échec de démarrage est signalé plus bas par l'erreur de lancement).
+                     */
+                    if (gameStarted && code !== 0 && code !== null && code !== undefined) {
 
+                        sendLaunchError(
+                            event.sender,
+                            "game-exit",
+                            { exitCode: code }
+                        );
+                    }
 
-            launcher.on(
-                "progress",
-                progressListener
-            );
+                    restoreAfterGame();
 
-const closeListener =
-    (code) => {
+                    removeGameListeners();
+                };
 
-        console.log(
-            "[CobbleRealm] Minecraft fermé. Code :",
-            code
-        );
+            removeGameListeners = () => {
 
-        event.sender.send(
-            "minecraft-status",
-            {
-                type: "closed",
-                message: "Minecraft fermé."
-            }
-        );
+                launcher.removeListener("debug", debugListener);
+                launcher.removeListener("data", dataListener);
+                launcher.removeListener("progress", progressListener);
+                launcher.removeListener("close", closeListener);
 
-        launcher.removeListener(
-            "close",
-            closeListener
-        );
-    };
+                launchInProgress = false;
+            };
 
-launcher.on(
-    "close",
-    closeListener
-);
+            launcher.on("debug", debugListener);
+            launcher.on("data", dataListener);
+            launcher.on("progress", progressListener);
+            launcher.on("close", closeListener);
 
 
             /*
-             * 6) LANCEMENT
+             * 7) LANCEMENT
              */
 
-            event.sender.send(
-                "minecraft-status",
-                {
-                    type:
-                        "status",
+            status("Lancement de Minecraft...");
 
-                    message:
-                        "Lancement de Minecraft..."
-                }
-            );
+            const gameProcess =
+                await launcher.launch(
+                    options
+                );
 
+            if (!gameProcess) {
 
-            await launcher.launch(
-                options
-            );
+                throw new Error(
+                    "Minecraft n'a pas pu démarrer. Vérifie ton installation puis réessaie."
+                );
+            }
 
+            gameStarted = true;
 
-            event.sender.send(
+            minimizeForGame();
+
+            notify("Minecraft est lancé", "Bon jeu sur CobbleRealm !");
+
+            safeSend(
+                event.sender,
                 "minecraft-status",
                 {
                     type:
@@ -2371,7 +2399,6 @@ launcher.on(
                         "Minecraft lancé."
                 }
             );
-
 
             return {
                 success:
@@ -2390,33 +2417,46 @@ launcher.on(
 
             console.error(
                 "[CobbleRealm] Erreur lancement :",
-                error
+                redactSecrets(error && error.stack ? error.stack : error)
             );
 
+            removeGameListeners();
+            launchInProgress = false;
 
-            event.sender.send(
+            /* Message clair + actions (Réessayer, Réparer, Copier le rapport, Aide) selon l'étape qui a échoué. */
+            const payload =
+                buildErrorPayload(step, error);
+
+            safeSend(
+                event.sender,
+                "launch-error",
+                payload
+            );
+
+            safeSend(
+                event.sender,
                 "minecraft-status",
                 {
                     type:
                         "error",
 
                     message:
-                        error.message ||
-                        "Erreur de lancement."
+                        payload.message
                 }
             );
-
 
             return {
                 success:
                     false,
 
                 step:
-                    "launch",
+                    step,
+
+                code:
+                    payload.code,
 
                 error:
-                    error.message ||
-                    "Erreur inconnue pendant le lancement."
+                    payload.message
             };
         }
     }
@@ -2424,96 +2464,39 @@ launcher.on(
 
 
 /* ==============================
-   BOUTON DISCORD
+   LIENS EXTERNES (adresses fixes)
 ============================== */
 
-ipcMain.handle(
-    "open-discord",
+function openFixedLink(channel, url) {
 
-    async () => {
+    handle(
+        channel,
 
-        try {
+        async () => {
 
-            await shell.openExternal(
-                "https://discord.gg/CyA4Qc9NAC"
-            );
+            try {
 
-            return {
-                success: true
-            };
+                await shell.openExternal(url);
 
-        } catch (error) {
+                return {
+                    success: true
+                };
 
-            return {
-                success: false,
-                error:
-                    error.message
-            };
+            } catch (error) {
+
+                return {
+                    success: false,
+                    error:
+                        safeMessage(error, "Impossible d'ouvrir le lien.")
+                };
+            }
         }
-    }
-);
+    );
+}
 
-
-/* ==============================
-   BOUTON SITE
-============================== */
-
-ipcMain.handle(
-    "open-site",
-
-    async () => {
-
-        try {
-
-            await shell.openExternal(
-                "https://cobblerealm.gitbook.io/cobblerealm-docs"
-            );
-
-            return {
-                success: true
-            };
-
-        } catch (error) {
-
-            return {
-                success: false,
-                error:
-                    error.message
-            };
-        }
-    }
-);
-
-
-/* ==============================
-   BOUTON BOUTIQUE
-============================== */
-
-ipcMain.handle(
-    "open-shop",
-
-    async () => {
-
-        try {
-
-            await shell.openExternal(
-                "https://cobblerealm-beta.tebex.store/"
-            );
-
-            return {
-                success: true
-            };
-
-        } catch (error) {
-
-            return {
-                success: false,
-                error:
-                    error.message
-            };
-        }
-    }
-);
+openFixedLink("open-discord", "https://discord.gg/CyA4Qc9NAC");
+openFixedLink("open-site", "https://cobblerealm.gitbook.io/cobblerealm-docs");
+openFixedLink("open-shop", "https://cobblerealm-beta.tebex.store/");
 
 
 /* ==============================
@@ -2523,16 +2506,16 @@ ipcMain.handle(
 app.whenReady().then(
     async () => {
 
+        /* Deuxième instance : on laisse la première gérer. */
+        if (!hasSingleInstanceLock) {
+            return;
+        }
+
         /*
          * OUVERTURE IMMÉDIATE DU LAUNCHER
          */
 
         createWindow();
-
-        /*
-         * On attend que la fenêtre soit prête
-         * avant d'envoyer les états de mise à jour.
-         */
 
         const win =
             BrowserWindow
@@ -2563,129 +2546,59 @@ app.whenReady().then(
             );
         }
 
+        /*
+         * Mise à jour du launcher lui-même (application installée uniquement).
+         */
 
-        try {
+        launcherSelfUpdater = initLauncherUpdates({
+            app,
+            notify: (info) => {
+                broadcast("launcher-self-update", info);
 
-            launcherNewsCache = await fetchLauncherNews();
-
-            /*
-             * VÉRIFICATION
-             */
-
-            sendLauncherUpdateStatus(
-                "checking",
-                "VÉRIFICATION..."
-            );
-
-            console.log(
-                "[CobbleRealm] Vérification des mises à jour..."
-            );
-
-            const result =
-                await checkCobbleRealmUpdate();
-
-
-            console.log(
-                "[CobbleRealm] Version locale :",
-                result.localVersion
-            );
-
-            console.log(
-                "[CobbleRealm] Version distante :",
-                result.remoteVersion
-            );
-
-            console.log(
-                "[CobbleRealm] Mise à jour disponible :",
-                result.updateAvailable
-            );
-
-
-            if (
-                result.updateAvailable
-            ) {
-
-                /*
-                 * TÉLÉCHARGEMENT
-                 */
-
-                sendLauncherUpdateStatus(
-                    "downloading",
-                    "TÉLÉCHARGEMENT..."
-                );
-
-                console.log(
-                    "[CobbleRealm] Mise à jour du modpack en cours..."
-                );
-
-
-                const zipPaths =
-    await downloadLatestCobbleRealmPack(
-        result.manifest
-    );
-
-console.log(
-    "[CobbleRealm] ZIP téléchargés :",
-    zipPaths
-);
-
-/*
- * INSTALLATION
- */
-
-sendLauncherUpdateStatus(
-    "installing",
-    "INSTALLATION..."
-);
-
-await extractCobbleRealmPack(
-    zipPaths
-);
-
-writeLocalCobbleRealmVersion(
-    result.remoteVersion
-);
-
-                console.log(
-                    "[CobbleRealm] Pack installé avec succès."
-                );
+                if (info && info.state === "ready") {
+                    notify("Mise à jour du launcher prête", "Redémarre le launcher pour installer la nouvelle version.");
+                }
             }
+        });
 
+        /*
+         * VÉRIFICATION DU MODPACK (lecture seule : rien n'est téléchargé ici).
+         * Le téléchargement se fait au clic sur JOUER, avant le lancement du jeu.
+         */
 
-            /*
-             * PRÊT À JOUER
-             */
+        launcherNewsCache = await fetchLauncherNews();
 
-            sendLauncherUpdateStatus(
-                "ready",
-                "JOUER"
-            );
+        sendLauncherUpdateStatus(
+            "checking",
+            "VÉRIFICATION..."
+        );
 
+        const check =
+            await runCheck();
 
-            console.log(
-                "[CobbleRealm] Préparation terminée."
-            );
+        if (check.fatal) {
 
-
-        } catch (error) {
-
-            console.error(
-                "[CobbleRealm] Erreur pendant la mise à jour :",
-                error
-            );
-
-
-            /*
-             * EN CAS D'ERREUR :
-             * JOUER RESTE BLOQUÉ
-             */
-
-            sendLauncherUpdateStatus(
-                "error",
-                "ERREUR DE MISE À JOUR"
+            broadcastLaunchError(
+                "update",
+                check.error
             );
         }
 
+        sendLauncherUpdateStatus(
+            "ready",
+            describeCheck(check),
+            { updateAvailable: Boolean(check.updateAvailable) }
+        );
+
+        if (DEV_MODE) {
+            pushLog(`[Mode test] manifest : ${COBBLEREALM_MANIFEST_URL} · dossier de jeu : ${getCobbleRealmRoot()}`);
+            console.log("[CobbleRealm] MODE TEST — manifest :", COBBLEREALM_MANIFEST_URL, "— jeu :", getCobbleRealmRoot());
+        }
+
+        console.log(
+            "[CobbleRealm] Vérification terminée :",
+            describeCheck(check)
+        );
 
         app.on(
             "activate",

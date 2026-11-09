@@ -10,6 +10,15 @@
         content="width=device-width, initial-scale=1.0"
     >
 
+    <!--
+        Politique de sécurité : aucun script ni contenu externe, aucune connexion réseau
+        depuis la page (tout passe par le processus principal).
+    -->
+    <meta
+        http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' file: data:; font-src file: data:; media-src file: data:"
+    >
+
     <title>CobbleRealm Launcher</title>
 
 
@@ -41,7 +50,8 @@
         ========================== */
 
         .sidebar {
-            width: 265px;
+            /* s'adapte à la largeur de la fenêtre : 265 px confortable, jamais moins de 210 px */
+            width: clamp(210px, 22vw, 265px);
             height: 100%;
             flex-shrink: 0;
             padding: 28px 18px;
@@ -69,9 +79,11 @@
         .brand-title {
             margin: 0;
 
-            font-size: 25px;
+            /* le logo texte rétrécit avec la barre latérale au lieu d'être coupé */
+            font-size: clamp(17px, calc((22vw - 50px) / 8.5), 25px);
             font-weight: 900;
-            letter-spacing: 2px;
+            letter-spacing: clamp(1px, 0.15vw, 2px);
+            white-space: nowrap;
 
             background:
                 linear-gradient(
@@ -116,7 +128,7 @@
             font-size: 17px;
 
             cursor: pointer;
-            transition: 0.2s;
+            transition: background-color 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s, transform 0.2s, filter 0.2s, opacity 0.2s;
         }
 
         .menu-item:hover {
@@ -153,9 +165,60 @@
            COMPTE MICROSOFT
         ========================== */
 
-        .account {
+        .sidebar-bottom {
             margin-top: auto;
+        }
 
+        .account-wrap {
+            position: relative;
+        }
+
+        .self-update {
+            margin-bottom: 10px;
+            padding: 10px 12px;
+
+            border-radius: 12px;
+
+            color: #b8ffd0;
+            background: rgba(20, 90, 60, 0.35);
+            border: 1px solid rgba(120, 255, 170, 0.35);
+
+            font-size: 13px;
+            line-height: 1.4;
+        }
+
+        .self-update[hidden] {
+            display: none;
+        }
+
+        .self-update-button {
+            margin-top: 8px;
+            padding: 7px 12px;
+
+            border-radius: 9px;
+            border: 1px solid rgba(120, 255, 170, 0.5);
+
+            color: white;
+            background: rgba(120, 255, 160, 0.2);
+
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: 800;
+
+            cursor: pointer;
+            transition: background-color 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s, transform 0.2s, filter 0.2s, opacity 0.2s;
+        }
+
+        .self-update-button:hover {
+            background: rgba(120, 255, 160, 0.34);
+        }
+
+        .self-update-button:focus-visible {
+            outline: 2px solid #63e7ff;
+            outline-offset: 2px;
+        }
+
+        .account {
             padding: 17px;
 
             border-radius: 13px;
@@ -171,7 +234,7 @@
 
             cursor: pointer;
 
-            transition: 0.2s;
+            transition: background-color 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s, transform 0.2s, filter 0.2s, opacity 0.2s;
         }
 
         .account:hover {
@@ -184,10 +247,124 @@
                 rgba(7, 24, 46, 0.84);
         }
 
+        .account:focus-visible {
+            outline: 2px solid #63e7ff;
+            outline-offset: 2px;
+        }
+
+        /* couleurs selon l'état : gris = non connecté, vert = connecté, ambre = en cours, rouge = erreur */
+        .account[data-state="offline"] .account-status { color: #9aabc1; }
+        .account[data-state="loading"] .account-status { color: #ffd37a; }
+        .account[data-state="error"] .account-status { color: #ff8f98; }
+
+        .account-hint {
+            margin-top: 7px;
+
+            color: #63e7ff;
+
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .account-hint:empty {
+            display: none;
+        }
+
+        .account-menu {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: calc(100% + 8px);
+
+            padding: 8px;
+
+            border-radius: 13px;
+
+            background: rgba(5, 17, 34, 0.97);
+            border: 1px solid rgba(72, 226, 255, 0.40);
+
+            box-shadow:
+                0 0 24px rgba(46, 102, 255, 0.18),
+                0 14px 36px rgba(0, 0, 0, 0.45);
+
+            z-index: 30;
+        }
+
+        .account-menu[hidden] {
+            display: none;
+        }
+
+        .account-menu-user {
+            padding: 6px 8px 8px;
+
+            color: #9aabc1;
+
+            font-size: 13px;
+
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .account-menu-item {
+            display: block;
+
+            width: 100%;
+            padding: 10px;
+
+            border: 0;
+            border-radius: 9px;
+
+            color: #dde5f1;
+            background: transparent;
+
+            font-family: inherit;
+            font-size: 14px;
+            text-align: left;
+
+            cursor: pointer;
+            transition: background-color 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s, transform 0.2s, filter 0.2s, opacity 0.2s;
+        }
+
+        .account-menu-item:hover:not(:disabled),
+        .account-menu-item:focus-visible {
+            color: white;
+            background: rgba(41, 201, 255, 0.13);
+            outline: none;
+        }
+
+        .account-menu-item:focus-visible {
+            box-shadow: inset 0 0 0 2px #63e7ff;
+        }
+
+        .account-menu-item.danger:hover:not(:disabled),
+        .account-menu-item.danger.confirm {
+            background: rgba(255, 90, 100, 0.18);
+        }
+
+        .account-menu-item:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+
+        .account-menu-note {
+            padding: 6px 8px 2px;
+
+            color: #ffd37a;
+
+            font-size: 13px;
+            line-height: 1.4;
+        }
+
         .account-title {
             margin-bottom: 9px;
-            font-size: 16px;
+            font-size: clamp(14px, 1.5vw, 16px);
             font-weight: 800;
+
+            /* reste sur une seule ligne, même dans la barre latérale étroite */
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .account-status {
@@ -314,7 +491,7 @@
             box-shadow:
                 0 10px 24px rgba(0, 0, 0, 0.17);
 
-            transition: 0.2s;
+            transition: background-color 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s, transform 0.2s, filter 0.2s, opacity 0.2s;
         }
 
         .top-button:hover {
@@ -405,12 +582,13 @@
             border:
                 1px solid rgba(57, 221, 255, 0.42);
 
-            font-size: 12px;
+            font-size: 13px;
             font-weight: 900;
             letter-spacing: 1.8px;
         }
 
-        .update-card h1 {
+        .update-card h1,
+        .news-modal-card h1 {
             margin:
                 15px 0 10px;
 
@@ -516,6 +694,9 @@
 
         .launcher-status {
             margin-bottom: 10px;
+
+            /* la barre de progression, les avertissements et les erreurs passent sous le texte */
+            flex-wrap: wrap;
         }
 
         .server-status {
@@ -556,7 +737,7 @@
                 0 0 8px rgba(61, 232, 255, 0.62),
                 0 0 28px rgba(74, 103, 255, 0.31);
 
-            transition: 0.2s;
+            transition: transform 0.2s, filter 0.2s, opacity 0.2s;
         }
 
         .play-button:hover {
@@ -569,6 +750,105 @@
 
         .play-icon {
             margin-right: 12px;
+        }
+
+        /* ===== focus clavier : toujours visible, jamais au clic de souris ===== */
+
+        :focus-visible {
+            outline: 2px solid #63e7ff;
+            outline-offset: 2px;
+        }
+
+        .menu-item:focus-visible {
+            outline-offset: -2px;
+            border-radius: 12px;
+        }
+
+        .play-button:focus-visible {
+            outline: 3px solid #ffffff;
+            outline-offset: 3px;
+        }
+
+        select:focus-visible,
+        .top-button:focus-visible,
+        .news-more:focus-visible,
+        .news-pill:focus-visible {
+            outline: 2px solid #63e7ff;
+            outline-offset: 3px;
+        }
+
+        .console-box:focus-visible,
+        .changelog-page:focus-visible,
+        .settings-page:focus-visible {
+            outline-offset: -3px;
+        }
+
+        /* ===== états du bouton JOUER ===== */
+
+        .play-button:active:not(:disabled) {
+            transform: translateY(0) scale(0.99);
+            filter: brightness(1.02);
+        }
+
+        .play-button:disabled {
+            transform: none;
+            filter: saturate(0.85) brightness(0.96);
+            cursor: progress;
+        }
+
+        .play-button[data-state="done"]:disabled {
+            cursor: default;
+        }
+
+        /* texte long (« METTRE À JOUR ET JOUER », messages d'étape) : plus petit, jamais coupé */
+        .play-button.compact {
+            font-size: 17px;
+            letter-spacing: 1.5px;
+        }
+
+        .play-button.compact.tiny {
+            font-size: 14px;
+            letter-spacing: 1px;
+        }
+
+        .play-button #playText {
+            display: inline-block;
+            max-width: calc(100% - 64px);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            vertical-align: middle;
+        }
+
+        .play-button .play-icon {
+            display: inline-block;
+            vertical-align: middle;
+        }
+
+        /* spinner discret (remplace le sablier emoji) */
+        .play-spinner {
+            width: 22px;
+            height: 22px;
+
+            border-radius: 50%;
+            border: 3px solid rgba(255, 255, 255, 0.35);
+            border-top-color: #ffffff;
+
+            animation: cr-spin 0.8s linear infinite;
+        }
+
+        @keyframes cr-spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* le texte du bouton apparaît en douceur quand il change */
+        .play-text-swap {
+            animation: cr-text-in 0.18s ease-out;
+        }
+
+        @keyframes cr-text-in {
+            from { opacity: 0; transform: translateY(3px); }
+            to   { opacity: 1; transform: translateY(0); }
         }
 
         .versions {
@@ -592,7 +872,7 @@
             border:
                 1px solid rgba(104, 172, 226, 0.16);
 
-            font-size: 12px;
+            font-size: 13px;
         }
 
         .version.realm {
@@ -796,7 +1076,7 @@
     border:
         1px solid rgba(57, 221, 255, 0.30);
 
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 800;
 }
 
@@ -1037,7 +1317,7 @@
     line-height: 1.5;
 }
 
-#ramSelect {
+.settings-page select {
     min-width: 120px;
     height: 42px;
 
@@ -1065,27 +1345,28 @@
     cursor: pointer;
 }
 
-#ramSelect:hover {
+.settings-page select:hover {
     border-color:
         rgba(89, 232, 255, 0.75);
 }
 
-#ramSelect:focus {
+.settings-page select:focus {
     box-shadow:
         0 0 0 3px rgba(54, 210, 255, 0.12),
         0 0 16px rgba(54, 210, 255, 0.18);
 }
 
-#ramSelect option {
+.settings-page select:focus-visible {
+    outline: 2px solid #63e7ff;
+    outline-offset: 3px;
+}
+
+.settings-page select option {
     color: white;
     background: #0a1830;
 }
 
 @media (max-width: 1100px) {
-
-            .sidebar {
-                width: 230px;
-            }
 
             .update-card {
                 width: 430px;
@@ -1101,6 +1382,985 @@
                     62% center;
             }
         }
+
+/* Fenêtres peu hautes : espacements resserrés, mêmes proportions */
+@media (max-height: 700px) {
+
+            .sidebar {
+                padding: 20px 18px;
+            }
+
+            .brand {
+                margin-bottom: 22px;
+            }
+
+            .menu {
+                gap: 8px;
+            }
+
+            .menu-item {
+                height: 46px;
+            }
+
+            .play-panel {
+                bottom: 28px;
+            }
+
+            .play-button {
+                height: 64px;
+                font-size: 24px;
+            }
+        }
+
+/* =========================
+   CONSOLE
+========================= */
+
+.console-page {
+    display: flex;
+    flex-direction: column;
+}
+
+.console-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px 16px;
+
+    margin-bottom: 12px;
+}
+
+.console-filter {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    color: #aebed3;
+
+    font-size: 14px;
+}
+
+.console-filter select {
+    min-width: 0;
+    padding: 7px 10px;
+
+    border-radius: 10px;
+    border: 1px solid rgba(53, 222, 255, 0.35);
+
+    color: white;
+    background: #0a1830;
+
+    font-family: inherit;
+    font-size: 14px;
+}
+
+.console-filter select:focus-visible {
+    outline: 2px solid #63e7ff;
+    outline-offset: 3px;
+}
+
+.console-count {
+    color: #8ea2bb;
+
+    font-size: 13px;
+}
+
+.console-actions {
+    display: flex;
+    gap: 8px;
+
+    margin-left: auto;
+}
+
+.console-jump {
+    position: absolute;
+    right: 90px;
+    bottom: 60px;
+    z-index: 6;
+
+    padding: 8px 14px;
+
+    border-radius: 999px;
+    border: 1px solid rgba(99, 231, 255, 0.6);
+
+    color: white;
+    background: rgba(8, 40, 70, 0.92);
+
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 800;
+
+    cursor: pointer;
+}
+
+.console-jump[hidden] {
+    display: none;
+}
+
+.log-line {
+    display: flex;
+    gap: 12px;
+
+    padding: 1px 0;
+
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.log-time {
+    flex-shrink: 0;
+
+    color: #5f7792;
+}
+
+.log-text {
+    min-width: 0;
+}
+
+.log-line.src-launcher .log-text { color: #7fe9ff; }
+.log-line.src-game .log-text { color: #b9c9dc; }
+.log-line.level-warn .log-text { color: #ffd37a; }
+.log-line.level-error .log-text { color: #ff8f98; font-weight: 700; }
+
+#consoleOutput[data-filter="problems"] .log-line:not(.level-warn):not(.level-error) {
+    display: none;
+}
+
+/* =========================
+   PARAMÈTRES
+========================= */
+
+/* barres de défilement fines, aux couleurs du launcher */
+.settings-page,
+.changelog-page,
+.console-page,
+.console-box,
+.news-modal-card {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(99, 231, 255, 0.45) transparent;
+}
+
+.settings-page .settings-card {
+    margin-bottom: 20px;
+}
+
+.settings-page .settings-card h2 {
+    margin-top: 0;
+}
+
+.settings-saved {
+    margin-left: 12px;
+
+    color: #41e5aa;
+
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.setting-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.setting-button {
+    padding: 9px 14px;
+
+    border-radius: 10px;
+    border: 1px solid rgba(99, 231, 255, 0.45);
+
+    color: white;
+    background: rgba(99, 231, 255, 0.14);
+
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 700;
+
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color 0.2s, border-color 0.2s, opacity 0.2s;
+}
+
+.setting-button:hover:not(:disabled) {
+    background: rgba(99, 231, 255, 0.28);
+}
+
+.setting-button:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+
+.setting-hint {
+    margin-top: 6px !important;
+
+    color: #8ea2bb !important;
+}
+
+.setting-warning {
+    margin-top: 6px !important;
+
+    color: #ffd37a !important;
+}
+
+.setting-warning[hidden] {
+    display: none;
+}
+
+.settings-page select {
+    min-width: 170px;
+}
+
+/* interrupteur */
+.switch {
+    position: relative;
+    display: inline-block;
+    flex-shrink: 0;
+    width: 50px;
+    height: 28px;
+}
+
+.switch input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.switch-track {
+    position: absolute;
+    inset: 0;
+
+    border-radius: 999px;
+
+    background: rgba(255, 255, 255, 0.16);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+
+    pointer-events: none;
+    transition: background-color 0.2s, border-color 0.2s;
+}
+
+.switch-track::after {
+    content: "";
+
+    position: absolute;
+    top: 3px;
+    left: 3px;
+
+    width: 20px;
+    height: 20px;
+
+    border-radius: 50%;
+
+    background: #ffffff;
+
+    transition: transform 0.2s;
+}
+
+.switch input:checked + .switch-track {
+    background: linear-gradient(90deg, #22d5f3, #6a63ff);
+    border-color: rgba(126, 242, 255, 0.7);
+}
+
+.switch input:checked + .switch-track::after {
+    transform: translateX(22px);
+}
+
+.switch input:focus-visible + .switch-track {
+    outline: 2px solid #63e7ff;
+    outline-offset: 3px;
+}
+
+.shortcuts-list {
+    margin: 0;
+    padding: 0;
+
+    list-style: none;
+
+    color: #c5d1e1;
+
+    font-size: 15px;
+    line-height: 2;
+}
+
+.shortcuts-list li {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+}
+
+.shortcuts-list li > span {
+    min-width: 210px;
+}
+
+kbd {
+    padding: 2px 8px;
+
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    border-bottom-width: 2px;
+
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.08);
+
+    font-family: inherit;
+    font-size: 13px;
+}
+
+.about-grid {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 6px 22px;
+
+    margin: 0 0 18px;
+
+    color: #c5d1e1;
+
+    font-size: 15px;
+}
+
+.about-grid dt {
+    color: #8ea2bb;
+}
+
+.about-grid dd {
+    margin: 0;
+
+    color: #ffffff;
+    font-weight: 700;
+}
+
+.about-actions {
+    justify-content: flex-start;
+}
+
+.setting-row {
+    flex-wrap: wrap;
+}
+
+/* =========================
+   ANIMATIONS (discrètes : transform et opacity uniquement)
+========================= */
+
+@keyframes cr-view-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes cr-fade {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+@keyframes cr-modal-in {
+    from { opacity: 0; transform: scale(0.97) translateY(6px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes cr-slide-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes cr-pop {
+    from { opacity: 0; transform: scale(0.97); }
+    to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes cr-shimmer {
+    to { transform: translateX(100%); }
+}
+
+@keyframes cr-glow {
+    0%, 100% { opacity: 0; }
+    50%      { opacity: 0.55; }
+}
+
+/* changement de page */
+.main {
+    animation: cr-view-in 0.2s ease-out;
+}
+
+/* fenêtres */
+.microsoft-modal.show {
+    animation: cr-fade 0.15s ease-out;
+}
+
+.microsoft-modal.show .modal-card {
+    animation: cr-modal-in 0.18s ease-out;
+}
+
+/* messages et menus */
+.error-box:not([hidden]) {
+    animation: cr-slide-in 0.2s ease-out;
+}
+
+.account-menu:not([hidden]) {
+    transform-origin: bottom center;
+    animation: cr-pop 0.14s ease-out;
+}
+
+/* le bouton JOUER « respire » doucement quand tout est prêt */
+.play-button {
+    position: relative;
+}
+
+.play-button::after {
+    content: "";
+
+    position: absolute;
+    inset: -3px;
+
+    border-radius: 16px;
+
+    box-shadow: 0 0 22px 4px rgba(74, 180, 255, 0.8);
+
+    opacity: 0;
+    pointer-events: none;
+}
+
+.play-button[data-state="ready"]:not(:hover):not(:focus-visible)::after {
+    animation: cr-glow 3.2s ease-in-out infinite;
+}
+
+/*
+ * Réduire les animations (réglage du launcher, ou réglage Windows en mode « Automatique ») :
+ * plus aucun mouvement, sauf l'indicateur de chargement du bouton JOUER qui reste (plus lent).
+ */
+html[data-motion="reduce"] *,
+html[data-motion="reduce"] *::before,
+html[data-motion="reduce"] *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+}
+
+html[data-motion="reduce"] .play-spinner {
+    animation-duration: 1.6s !important;
+    animation-iteration-count: infinite !important;
+}
+
+/* =========================
+   INFORMATIONS : SERVEUR, CHANGELOG, CHARGEMENT
+========================= */
+
+.server-status[hidden] {
+    display: none;
+}
+
+.server-status .status-dot.error {
+    background: #ff5252;
+}
+
+#serverValue.offline {
+    color: #ff8f98;
+}
+
+#serverValue.unknown {
+    color: #9aabc1;
+}
+
+.version[hidden] {
+    display: none;
+}
+
+.news-skeleton .sk {
+    margin-bottom: 11px;
+
+    border-radius: 8px;
+
+    background: rgba(255, 255, 255, 0.10);
+}
+
+.news-skeleton .sk-badge { width: 150px; height: 28px; border-radius: 999px; }
+.news-skeleton .sk-title { width: 70%; height: 26px; margin-top: 15px; }
+.news-skeleton .sk-line { width: 100%; height: 13px; }
+.news-skeleton .sk-line.short { width: 55%; }
+
+.changelog-card {
+    margin-bottom: 20px;
+}
+
+.changelog-card h2 {
+    display: inline-block;
+    margin-right: 12px;
+}
+
+.changelog-card .changelog-date {
+    margin-left: 4px;
+
+    color: #9aabc1;
+
+    font-size: 13px;
+}
+
+.changelog-card h3 {
+    margin: 18px 0 8px;
+}
+
+.changelog-card h3.s-new { color: #63e7ff; }
+.changelog-card h3.s-better { color: #c58bff; }
+.changelog-card h3.s-fix { color: #41e5aa; }
+
+.changelog-card ul {
+    margin: 0;
+    padding-left: 20px;
+
+    color: #c5d1e1;
+
+    font-size: 15px;
+    line-height: 1.65;
+}
+
+.changelog-card li + li {
+    margin-top: 4px;
+}
+
+.changelog-loading p,
+.changelog-note {
+    color: #aebed3;
+    font-size: 14px;
+}
+
+.changelog-note {
+    max-width: 600px;
+    margin: 4px 0 30px;
+}
+
+/* =========================
+   ZONE DU HAUT DU PANNEAU + PROGRESSION
+========================= */
+
+.panel-slot {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+}
+
+/* dès qu'un téléchargement, un avertissement ou une erreur est affiché, la zone garde une hauteur constante */
+.play-panel.busy .panel-slot {
+    min-height: 168px;
+}
+
+.play-panel.busy .server-status {
+    display: none;
+}
+
+.progress-block {
+    margin: 6px 0 0 21px;
+    flex: 0 0 calc(100% - 21px);
+    min-width: 0;
+}
+
+.progress-block[hidden] {
+    display: none;
+}
+
+.progress-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+
+    font-size: 14px;
+    font-weight: 700;
+    color: #eaf6ff;
+}
+
+.progress-eta {
+    color: #9fefff;
+
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.progress-track {
+    height: 8px;
+    margin-top: 7px;
+
+    border-radius: 4px;
+
+    background: rgba(255, 255, 255, 0.14);
+
+    overflow: hidden;
+}
+
+.progress-fill {
+    position: relative;
+
+    width: 100%;
+    height: 100%;
+
+    overflow: hidden;
+
+    border-radius: 4px;
+
+    background: linear-gradient(90deg, #22d5f3, #3087ff 55%, #a94cff);
+
+    /* on anime la transformation (très léger), jamais la largeur */
+    transform: scaleX(0);
+    transform-origin: left center;
+    transition: transform 0.2s ease-out;
+}
+
+/* reflet qui avance : preuve visuelle que le téléchargement progresse */
+.progress-fill::after {
+    content: "";
+
+    position: absolute;
+    inset: 0;
+
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+
+    transform: translateX(-100%);
+    animation: cr-shimmer 1.6s linear infinite;
+}
+
+.progress-foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+
+    margin-top: 7px;
+}
+
+.progress-detail {
+    flex: 1;
+    min-width: 0;
+
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    color: #b9c9dc;
+
+    font-size: 13px;
+}
+
+.progress-cancel {
+    flex-shrink: 0;
+
+    padding: 5px 12px;
+
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+
+    color: white;
+    background: rgba(255, 255, 255, 0.08);
+
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 800;
+
+    cursor: pointer;
+    transition: background-color 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s, transform 0.2s, filter 0.2s, opacity 0.2s;
+}
+
+.progress-cancel:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.progress-cancel:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+
+.progress-cancel:focus-visible {
+    outline: 2px solid #63e7ff;
+    outline-offset: 2px;
+}
+
+/* =========================
+   ERREUR LISIBLE (dans le panneau JOUER)
+========================= */
+
+.play-panel.has-error .launcher-status,
+.play-panel.has-error .server-status {
+    display: none;
+}
+
+.error-box {
+    margin-bottom: 14px;
+    padding: 12px 14px;
+
+    border-radius: 12px;
+
+    background: rgba(90, 10, 22, 0.42);
+    border: 1px solid rgba(255, 120, 130, 0.55);
+}
+
+.error-box[hidden] {
+    display: none;
+}
+
+/* simple information (ex. mise à jour annulée) : couleurs du launcher, pas de rouge */
+.error-box.info {
+    background: rgba(8, 40, 70, 0.5);
+    border-color: rgba(99, 231, 255, 0.45);
+}
+
+.error-box.info .error-title {
+    color: #9fefff;
+}
+
+.error-box.info .error-code {
+    display: none;
+}
+
+.error-title {
+    margin-bottom: 5px;
+
+    color: #ffb4bc;
+
+    font-size: 16px;
+    font-weight: 800;
+}
+
+.error-message {
+    color: #eaf0fa;
+
+    font-size: 14px;
+    line-height: 1.45;
+}
+
+.error-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+
+    margin-top: 10px;
+}
+
+.error-button {
+    height: 34px;
+    padding: 0 14px;
+
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+
+    color: white;
+    background: rgba(255, 255, 255, 0.10);
+
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 800;
+
+    cursor: pointer;
+    transition: background-color 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s, transform 0.2s, filter 0.2s, opacity 0.2s;
+}
+
+.error-button:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.error-button.primary {
+    border-color: rgba(99, 231, 255, 0.55);
+    background: rgba(99, 231, 255, 0.2);
+}
+
+.error-button.primary:hover {
+    background: rgba(99, 231, 255, 0.32);
+}
+
+.error-button:focus-visible {
+    outline: 2px solid #63e7ff;
+    outline-offset: 2px;
+}
+
+.error-code {
+    margin-top: 8px;
+
+    color: #9aabc1;
+
+    font-size: 13px;
+}
+
+/* =========================
+   ANNONCE : S'ADAPTE À L'ESPACE DISPONIBLE
+   (étapes choisies par le script selon la place restante :
+    complète -> compacte -> minimale -> simple pastille)
+========================= */
+
+.news-more,
+.news-pill {
+    display: none;
+
+    font-family: inherit;
+    cursor: pointer;
+}
+
+.news-more {
+    margin-top: 12px;
+    padding: 8px 14px;
+
+    border-radius: 10px;
+
+    color: #62eaff;
+    background: rgba(13, 131, 179, 0.15);
+    border: 1px solid rgba(57, 221, 255, 0.42);
+
+    font-size: 13px;
+    font-weight: 800;
+
+    transition: background-color 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s, transform 0.2s, filter 0.2s, opacity 0.2s;
+}
+
+.news-more:hover,
+.news-pill:hover {
+    background: rgba(13, 131, 179, 0.32);
+}
+
+.update-card[data-stage="compact"] {
+    width: min(400px, calc(100vw - 340px));
+    padding: 16px 18px 18px;
+}
+
+.update-card[data-stage="compact"] h1 {
+    margin: 11px 0 8px;
+    font-size: 22px;
+}
+
+.update-card[data-stage="compact"] .update-text:nth-of-type(n+2) {
+    display: none;
+}
+
+.update-card[data-stage="compact"] .update-text {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    overflow: hidden;
+    font-size: 13px;
+}
+
+.update-card[data-stage="mini"] {
+    width: min(340px, calc(100vw - 340px));
+    padding: 12px 16px 14px;
+}
+
+.update-card[data-stage="mini"] h1 {
+    margin: 9px 0 0;
+    font-size: 18px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.update-card[data-stage="mini"] .update-text {
+    display: none;
+}
+
+.update-card[data-stage="compact"] .news-more,
+.update-card[data-stage="mini"] .news-more {
+    display: inline-block;
+}
+
+/* dernière étape : une simple pastille cliquable, aucun chevauchement possible */
+.update-card[data-stage="pill"] {
+    width: auto;
+    padding: 0;
+
+    background: none;
+    border: none;
+    box-shadow: none;
+    backdrop-filter: none;
+}
+
+.update-card[data-stage="pill"] > *:not(.news-pill) {
+    display: none;
+}
+
+.update-card[data-stage="pill"] .news-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+
+    padding: 8px 14px;
+
+    border-radius: 999px;
+
+    color: #62eaff;
+    background: rgba(5, 23, 45, 0.62);
+    border: 1px solid rgba(57, 221, 255, 0.5);
+    backdrop-filter: blur(12px);
+
+    font-size: 13px;
+    font-weight: 900;
+    letter-spacing: 1.4px;
+
+    transition: background-color 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s, transform 0.2s, filter 0.2s, opacity 0.2s;
+}
+
+/* fenêtre « Lire la suite » */
+.news-modal-card {
+    width: min(640px, 92vw);
+    max-height: 86vh;
+    overflow-y: auto;
+
+    text-align: left;
+
+    /* barre de défilement fine, aux couleurs du launcher */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(99, 231, 255, 0.45) transparent;
+}
+
+.modal-button:focus-visible {
+    outline: 2px solid #63e7ff;
+    outline-offset: 3px;
+}
+
+.news-modal-card .update-text {
+    max-width: none;
+}
+
+.modal-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+
+    margin-top: 16px;
+}
+
+.modal-actions .modal-button {
+    margin-top: 0;
+    height: 38px;
+    padding: 0 16px;
+    font-size: 13px;
+}
+
+.modal-button.ghost {
+    background: transparent;
+}
+
+.modal-button {
+    margin-top: 18px;
+    height: 42px;
+    padding: 0 22px;
+
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+
+    color: white;
+    background: rgba(99, 231, 255, 0.18);
+
+    font-size: 14px;
+    font-weight: 800;
+
+    cursor: pointer;
+    transition: background-color 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s, transform 0.2s, filter 0.2s, opacity 0.2s;
+}
+
+.modal-button:hover {
+    background: rgba(99, 231, 255, 0.3);
+}
 
     </style>
 
@@ -1122,7 +2382,7 @@
                 COBBLEREALM
             </h2>
 
-            <div class="brand-subtitle">
+            <div class="brand-subtitle" id="brandSubtitle">
                 Launcher officiel
             </div>
 
@@ -1190,27 +2450,65 @@
         </nav>
 
 
-        <div
-            class="account"
-            id="microsoftAccount"
-        >
+        <div class="sidebar-bottom">
 
-            <div class="account-title">
-                Compte Microsoft
+            <!-- Mise à jour du launcher lui-même -->
+            <div class="self-update" id="selfUpdateBox" hidden>
+                <div id="selfUpdateText"></div>
+                <button class="self-update-button" id="selfUpdateButton" hidden>Redémarrer maintenant</button>
             </div>
 
-            <div class="account-status">
+        <div class="account-wrap">
 
-                <span
-                    class="status-dot offline"
-                    id="accountDot"
-                ></span>
+            <!-- Menu du compte (s'ouvre au-dessus de la carte) -->
+            <div class="account-menu" id="accountMenu" role="menu" aria-label="Compte Microsoft" hidden>
 
-                <span id="accountText">
-                    Vérification...
-                </span>
+                <div class="account-menu-user" id="accountMenuUser"></div>
+
+                <button class="account-menu-item" id="accountSwitch" role="menuitem">
+                    Changer de compte
+                </button>
+
+                <button class="account-menu-item danger" id="accountLogout" role="menuitem">
+                    Se déconnecter
+                </button>
+
+                <div class="account-menu-note" id="accountMenuNote" hidden></div>
 
             </div>
+
+            <div
+                class="account"
+                id="microsoftAccount"
+                data-state="loading"
+                role="button"
+                tabindex="0"
+                aria-haspopup="menu"
+                aria-expanded="false"
+            >
+
+                <div class="account-title">
+                    Compte Microsoft
+                </div>
+
+                <div class="account-status">
+
+                    <span
+                        class="status-dot offline"
+                        id="accountDot"
+                    ></span>
+
+                    <span id="accountText">
+                        Vérification...
+                    </span>
+
+                </div>
+
+                <div class="account-hint" id="accountHint"></div>
+
+            </div>
+
+        </div>
 
         </div>
 
@@ -1247,36 +2545,91 @@
 </div>
 
 
-        <section class="update-card" id="updateCard" aria-live="polite"></section>
+        <section class="update-card" id="updateCard" aria-live="polite" aria-busy="true">
+
+            <!-- état de chargement : remplacé dès que l'annonce est reçue -->
+            <div class="news-skeleton" aria-hidden="true">
+                <div class="sk sk-badge"></div>
+                <div class="sk sk-title"></div>
+                <div class="sk sk-line"></div>
+                <div class="sk sk-line"></div>
+                <div class="sk sk-line short"></div>
+            </div>
+
+        </section>
 
 
-        <section class="play-panel">
+        <section class="play-panel" id="playPanel">
 
+
+            <div class="panel-slot" id="panelSlot">
+
+            <!-- Erreur lisible : remplace les lignes de statut tant qu'elle est affichée -->
+            <div class="error-box" id="errorBox" hidden role="alert">
+                <div class="error-title" id="errorTitle"></div>
+                <div class="error-message" id="errorText"></div>
+                <div class="error-actions" id="errorActions"></div>
+                <div class="error-code" id="errorCode"></div>
+            </div>
 
             <div class="launcher-status">
 
                 <span class="status-dot"></span>
 
-                <span id="launcherUpdateStatus">
+                <span id="launcherUpdateStatus" role="status" aria-live="polite">
     Vérification de la version...
                 </span>
+
+<div id="launcherProgress" style="
+    display: none;
+    margin-left: 21px;
+    margin-top: 4px;
+    font-size: 14px;
+    font-weight: 800;
+    color: #63e7ff;
+">
+    0%
+</div>
+
+<!-- Progression de la mise à jour du modpack -->
+<div id="updateBarWrap" class="progress-block" hidden>
+
+    <div class="progress-head">
+        <span id="progressTitle">Téléchargement... 0 %</span>
+        <span id="progressEta" class="progress-eta"></span>
+    </div>
+
+    <div class="progress-track" id="progressTrack" role="progressbar" aria-label="Avancement du téléchargement" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <div class="progress-fill" id="updateBar"></div>
+    </div>
+
+    <div class="progress-foot">
+        <span id="updateDetail" class="progress-detail"></span>
+        <button class="progress-cancel" id="cancelUpdate">Annuler</button>
+    </div>
+
+</div>
+
+<!-- Avertissement (hors-ligne) -->
+<div id="updateWarning" hidden style="margin: 4px 0 0 21px; flex: 0 0 calc(100% - 21px); font-size: 13px; color: #ffd37a;"></div>
 
             </div>
 
 
-            <div class="server-status">
+            <!-- Statut réel du serveur : masqué tant que l'adresse n'est pas configurée (aucune valeur inventée) -->
+            <div class="server-status" id="serverRow" hidden>
 
-                <span class="status-dot"></span>
+                <span class="status-dot offline" id="serverDot"></span>
 
                 <span>
 
                     Serveur
 
-                    <strong class="online">
-                        EN LIGNE
-                    </strong>
+                    <strong class="online" id="serverValue"></strong>
 
                 </span>
+
+            </div>
 
             </div>
 
@@ -1296,19 +2649,13 @@
             <div class="versions">
 
 
-                <span class="version">
-                    ◇ Minecraft 1.21.1
-                </span>
+                <span class="version" id="chipMinecraft" hidden></span>
 
 
-                <span class="version">
-                    ⚙ Fabric
-                </span>
+                <span class="version" id="chipFabric" hidden></span>
 
 
-                <span class="version realm" id="newsVersionBadge">
-                    ★ CobbleRealm V4
-                </span>
+                <span class="version realm" id="chipPack" hidden></span>
 
 
             </div>
@@ -1329,7 +2676,7 @@
     style="display: none;"
 >
 
-    <div class="changelog-page">
+    <div class="changelog-page" tabindex="0">
 
         <h1>Changelog</h1>
 
@@ -1337,21 +2684,15 @@
             Toutes les nouveautés de CobbleRealm.
         </p>
 
-        <div class="changelog-card">
+        <div id="changelogList" aria-live="polite">
 
-            <h2>CobbleRealm V4</h2>
-
-            <span>Dernière mise à jour</span>
-
-            <h3>Nouveautés</h3>
-
-            <p>
-                Retrouvez ici les changements,
-                nouveautés et correctifs de
-                CobbleRealm V4.
-            </p>
+            <div class="changelog-card changelog-loading">
+                <p>Chargement des nouveautés...</p>
+            </div>
 
         </div>
+
+        <p class="changelog-note" id="changelogNote" hidden></p>
 
     </div>
 
@@ -1376,9 +2717,29 @@
             Logs de CobbleRealm Launcher et de Minecraft.
         </p>
 
-        <div class="console-box" id="consoleOutput">
-            <div>[CobbleRealm] Console prête.</div>
+        <button class="console-jump" id="consoleJump" hidden>↓ Nouveaux messages</button>
+
+        <div class="console-toolbar" id="consoleToolbar">
+
+            <label class="console-filter">
+                <span>Afficher</span>
+                <select id="consoleFilter" aria-label="Filtrer les messages">
+                    <option value="all">Tout</option>
+                    <option value="problems">Avertissements et erreurs</option>
+                </select>
+            </label>
+
+            <span class="console-count" id="consoleCount" role="status" aria-live="polite"></span>
+
+            <div class="console-actions">
+                <button class="setting-button" id="consoleCopy">Copier</button>
+                <button class="setting-button" id="consoleExport">Exporter</button>
+                <button class="setting-button" id="consoleClear">Effacer</button>
+            </div>
+
         </div>
+
+        <div class="console-box" id="consoleOutput" data-filter="all" role="log" aria-live="off" aria-label="Journal du launcher et de Minecraft" tabindex="0">        </div>
 
     </div>
 
@@ -1394,13 +2755,15 @@
     style="display: none;"
 >
 
-    <div class="settings-page">
+    <div class="settings-page" tabindex="0">
 
         <h1>Paramètres</h1>
 
         <p>
-            Configurez CobbleRealm Launcher.
+            Configure CobbleRealm Launcher.
+            <span class="settings-saved" id="settingsSaved" role="status" aria-live="polite"></span>
         </p>
+
 
         <div class="settings-card">
 
@@ -1408,21 +2771,133 @@
 
             <div class="setting-row">
                 <div>
-                    <strong>Mémoire RAM</strong>
-                    <p>
-                        Quantité de mémoire utilisée par Minecraft.
-                    </p>
+                    <strong id="ramLabel">Mémoire RAM</strong>
+                    <p>Quantité de mémoire utilisée par Minecraft.</p>
+                    <p class="setting-hint" id="ramHint"></p>
+                    <p class="setting-warning" id="ramWarning" hidden></p>
                 </div>
 
-                <select id="ramSelect">
-                    <option value="4">4 Go</option>
-                    <option value="6">6 Go</option>
-                    <option value="8" selected>8 Go</option>
-                    <option value="10">10 Go</option>
-                    <option value="12">12 Go</option>
-                    <option value="16">16 Go</option>
+                <div class="setting-controls">
+                    <select id="ramSelect" aria-labelledby="ramLabel"></select>
+                    <button class="setting-button" id="ramReset">Valeur recommandée</button>
+                </div>
+            </div>
+
+        </div>
+
+
+        <div class="settings-card">
+
+            <h2>Installation</h2>
+
+            <div class="setting-row">
+                <div>
+                    <strong>Dossier du jeu</strong>
+                    <p>Ouvre le dossier où CobbleRealm est installé (mods, captures, sauvegardes).</p>
+                </div>
+                <button class="setting-button" id="openFolder">Ouvrir le dossier</button>
+            </div>
+
+            <div class="setting-row">
+                <div>
+                    <strong>Réparer l'installation</strong>
+                    <p>Vérifie tous les fichiers et remplace ceux qui sont manquants ou abîmés.</p>
+                    <p class="setting-hint" id="repairStatus" role="status" aria-live="polite"></p>
+                </div>
+                <button class="setting-button" id="settingsRepair">Réparer</button>
+            </div>
+
+        </div>
+
+
+        <div class="settings-card">
+
+            <h2>Launcher</h2>
+
+            <div class="setting-row">
+                <div>
+                    <strong id="onLaunchLabel">Pendant la partie</strong>
+                    <p>Ce que fait le launcher quand Minecraft démarre. Il revient à l'écran quand le jeu se ferme.</p>
+                </div>
+                <select id="onLaunchSelect" aria-labelledby="onLaunchLabel">
+                    <option value="keep">Rester ouvert</option>
+                    <option value="minimize">Se réduire</option>
                 </select>
             </div>
+
+            <div class="setting-row">
+                <div>
+                    <strong id="notificationsLabel">Notifications Windows</strong>
+                    <p>Prévient quand une mise à jour est terminée ou en cas de problème, si le launcher n'est pas au premier plan.</p>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" id="notificationsToggle" aria-labelledby="notificationsLabel">
+                    <span class="switch-track"></span>
+                </label>
+            </div>
+
+            <div class="setting-row">
+                <div>
+                    <strong id="uiScaleLabel">Taille de l'interface</strong>
+                    <p>Automatique : l'interface s'agrandit avec la fenêtre sur les grands écrans.</p>
+                </div>
+                <select id="uiScaleSelect" aria-labelledby="uiScaleLabel">
+                    <option value="auto">Automatique</option>
+                    <option value="1">100 %</option>
+                    <option value="1.1">110 %</option>
+                    <option value="1.25">125 %</option>
+                    <option value="1.5">150 %</option>
+                </select>
+            </div>
+
+            <div class="setting-row">
+                <div>
+                    <strong id="motionLabel">Réduire les animations</strong>
+                    <p>Automatique : suit le réglage « animations » de Windows.</p>
+                </div>
+                <select id="motionSelect" aria-labelledby="motionLabel">
+                    <option value="auto">Automatique</option>
+                    <option value="on">Oui, réduire</option>
+                    <option value="off">Non</option>
+                </select>
+            </div>
+
+        </div>
+
+
+        <div class="settings-card">
+
+            <h2>Raccourcis clavier</h2>
+
+            <ul class="shortcuts-list">
+                <li><span><kbd>Tab</kbd></span> Passer à l'élément suivant</li>
+                <li><span><kbd>Entrée</kbd> ou <kbd>Espace</kbd></span> Valider l'élément sélectionné</li>
+                <li><span><kbd>Alt</kbd> + <kbd>1</kbd> … <kbd>4</kbd></span> Accueil, Changelog, Console, Paramètres</li>
+                <li><span><kbd>Ctrl</kbd> + <kbd>Entrée</kbd></span> Lancer le jeu</li>
+                <li><span><kbd>Échap</kbd></span> Fermer une fenêtre ou un menu</li>
+            </ul>
+
+        </div>
+
+
+        <div class="settings-card">
+
+            <h2>À propos</h2>
+
+            <dl class="about-grid">
+                <dt>Launcher</dt><dd id="aboutLauncher">…</dd>
+                <dt>Modpack</dt><dd id="aboutPack">…</dd>
+                <dt>Minecraft</dt><dd id="aboutMinecraft">…</dd>
+                <dt>Fabric</dt><dd id="aboutFabric">…</dd>
+                <dt>Java</dt><dd id="aboutJava">…</dd>
+            </dl>
+
+            <div class="setting-controls about-actions">
+                <button class="setting-button" id="aboutCopy">Copier les informations</button>
+                <button class="setting-button" id="aboutHelp">Obtenir de l'aide</button>
+            </div>
+
+            <p class="setting-hint">Les informations copiées ne contiennent aucune donnée personnelle (ni compte, ni pseudo, ni nom d'utilisateur).</p>
 
         </div>
 
@@ -1441,12 +2916,15 @@
 <div
     class="microsoft-modal"
     id="microsoftModal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="microsoftModalTitle"
 >
 
     <div class="modal-card">
 
 
-        <h2>
+        <h2 id="microsoftModalTitle">
             Connexion Microsoft
         </h2>
 
@@ -1467,7 +2945,22 @@
         </div>
 
 
-        <div class="modal-small">
+        <div class="modal-small" id="deviceCodeHint">
+            Page : <strong id="deviceCodePage">microsoft.com/devicelogin</strong>
+            · Code valable encore <strong id="deviceCodeTimer">--:--</strong>
+        </div>
+
+        <div class="modal-small" id="deviceSwitchNote" hidden>
+            Pour changer de compte, choisis « Utiliser un autre compte » dans la page Microsoft.
+        </div>
+
+        <div class="modal-actions">
+            <button class="modal-button" id="deviceCopy">Copier le code</button>
+            <button class="modal-button" id="deviceReopen">Rouvrir la page</button>
+            <button class="modal-button ghost" id="deviceCancel">Annuler</button>
+        </div>
+
+        <div class="modal-small" id="deviceStatus" aria-live="polite">
             Le launcher attend la validation
             de ton compte Microsoft...
         </div>
@@ -1478,349 +2971,508 @@
 </div>
 
 
+<!-- Annonce complète (bouton « Lire la suite ») -->
+<div
+    class="microsoft-modal"
+    id="newsModal"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Annonce"
+>
+
+    <div class="modal-card news-modal-card">
+
+        <div id="newsModalBody"></div>
+
+        <button class="modal-button" id="newsModalClose">
+            Fermer
+        </button>
+
+    </div>
+
+</div>
+
+
 
 <script>
 
 
-    const accountButton =
-        document.getElementById(
-            "microsoftAccount"
-        );
-
-
-    const accountText =
-        document.getElementById(
-            "accountText"
-        );
-
-
-    const accountDot =
-        document.getElementById(
-            "accountDot"
-        );
-
-
-    const modal =
-        document.getElementById(
-            "microsoftModal"
-        );
-
-
-    const deviceCode =
-        document.getElementById(
-            "deviceCode"
-        );
-
-
-    let loginInProgress =
-        false;
-
-
-    let microsoftConnected =
-        false;
-
-
-
     /* =========================
-       AFFICHER COMPTE
+       COMPTE MICROSOFT
+       (connexion, menu, changement de compte, déconnexion, fenêtre du code)
     ========================== */
 
+    const accountButton = document.getElementById("microsoftAccount");
+    const accountText = document.getElementById("accountText");
+    const accountDot = document.getElementById("accountDot");
+    const accountHint = document.getElementById("accountHint");
+    const accountMenu = document.getElementById("accountMenu");
+    const accountMenuUser = document.getElementById("accountMenuUser");
+    const accountMenuNote = document.getElementById("accountMenuNote");
+    const accountSwitchItem = document.getElementById("accountSwitch");
+    const accountLogoutItem = document.getElementById("accountLogout");
 
-    function showConnectedAccount(
-        username
-    ) {
+    const modal = document.getElementById("microsoftModal");
+    const deviceCode = document.getElementById("deviceCode");
+    const deviceCodePage = document.getElementById("deviceCodePage");
+    const deviceCodeTimer = document.getElementById("deviceCodeTimer");
+    const deviceSwitchNote = document.getElementById("deviceSwitchNote");
+    const deviceStatus = document.getElementById("deviceStatus");
+    const deviceCopy = document.getElementById("deviceCopy");
+    const deviceReopen = document.getElementById("deviceReopen");
+    const deviceCancel = document.getElementById("deviceCancel");
 
-        microsoftConnected =
-            true;
+    let loginInProgress = false;
+    let microsoftConnected = false;
+    let switchingAccount = false;
+    let accountEmail = null;
+    let logoutConfirmTimer = null;
+    let deviceTimer = null;
+    let modalReturnFocus = null;
 
 
-        accountDot.classList.remove(
-            "loading",
-            "error",
-            "offline"
+    /* ----- états de la carte du compte ----- */
+
+    function setAccountState(state, text, hint) {
+
+        accountButton.dataset.state = state;
+
+        accountDot.classList.remove("loading", "error", "offline");
+
+        if (state !== "connected") {
+            accountDot.classList.add(state);
+        }
+
+        accountText.textContent = text;
+        accountHint.textContent = hint || "";
+
+        accountButton.setAttribute(
+            "aria-label",
+            "Compte Microsoft : " + text + (hint ? ". " + hint : "")
         );
-
-
-        accountText.textContent =
-            username ||
-            "Compte connecté";
     }
 
+    function showConnectedAccount(username) {
 
+        microsoftConnected = true;
+        accountEmail = username || null;
 
-    /* =========================
-       AFFICHER DÉCONNECTÉ
-    ========================== */
-
+        setAccountState("connected", username || "Compte connecté", "Gérer le compte ›");
+    }
 
     function showDisconnected() {
 
-        microsoftConnected =
-            false;
+        microsoftConnected = false;
+        accountEmail = null;
 
+        setAccountState("offline", "Non connecté", "Se connecter ›");
+    }
 
-        accountDot.classList.remove(
-            "loading",
-            "error"
-        );
+    function showAccountError(text) {
 
+        microsoftConnected = false;
 
-        accountDot.classList.add(
-            "offline"
-        );
-
-
-        accountText.textContent =
-            "Non connecté";
+        setAccountState("error", text, "Réessayer ›");
     }
 
 
-
-    /* =========================
-       SESSION AU DÉMARRAGE
-    ========================== */
-
+    /* ----- session au démarrage ----- */
 
     async function checkMicrosoftSession() {
 
         try {
 
-            if (
-                !window.cobbleRealm ||
-                !window.cobbleRealm
-                    .getMicrosoftSession
-            ) {
-
+            if (!window.cobbleRealm || !window.cobbleRealm.getMicrosoftSession) {
                 showDisconnected();
-
                 return;
             }
 
+            const session = await window.cobbleRealm.getMicrosoftSession();
 
-            const session =
-                await window
-                    .cobbleRealm
-                    .getMicrosoftSession();
-
-
-            if (
-                session &&
-                session.success &&
-                session.connected &&
-                session.account
-            ) {
-
-                showConnectedAccount(
-                    session
-                        .account
-                        .username
-                );
-
+            if (session && session.success && session.connected && session.account) {
+                showConnectedAccount(session.account.username);
             } else {
-
                 showDisconnected();
-
             }
-
 
         } catch (error) {
 
-            console.error(
-                "Erreur session Microsoft :",
-                error
-            );
+            console.error("Erreur session Microsoft :", error);
+            showDisconnected();
+        }
+    }
 
+
+    /* ----- fenêtre du code ----- */
+
+    function formatTimer(totalSeconds) {
+
+        const seconds = Math.max(0, Math.floor(totalSeconds));
+
+        return String(Math.floor(seconds / 60)).padStart(2, "0") + ":" + String(seconds % 60).padStart(2, "0");
+    }
+
+    function stopDeviceTimer() {
+
+        if (deviceTimer) {
+            clearInterval(deviceTimer);
+            deviceTimer = null;
+        }
+    }
+
+    function showDeviceCode(data) {
+
+        deviceCode.textContent = data.userCode || "----";
+
+        try {
+
+            const url = new URL(data.verificationUri);
+            deviceCodePage.textContent = url.host + url.pathname.replace(/\/$/, "");
+
+        } catch {
+
+            deviceCodePage.textContent = "microsoft.com/devicelogin";
+        }
+
+        deviceSwitchNote.hidden = !switchingAccount;
+        deviceStatus.textContent = "Le launcher attend la validation de ton compte Microsoft...";
+
+        stopDeviceTimer();
+
+        const expiresAt = Date.now() + (Number(data.expiresIn) || 900) * 1000;
+
+        const tick = () => {
+
+            const left = (expiresAt - Date.now()) / 1000;
+
+            deviceCodeTimer.textContent = formatTimer(left);
+
+            if (left <= 0) {
+
+                stopDeviceTimer();
+                deviceStatus.textContent = "Ce code a expiré. Annule puis recommence pour en obtenir un nouveau.";
+            }
+        };
+
+        tick();
+        deviceTimer = setInterval(tick, 1000);
+
+        if (!modal.classList.contains("show")) {
+
+            modalReturnFocus = document.activeElement;
+            modal.classList.add("show");
+            deviceCopy.focus();
+        }
+    }
+
+    function hideDeviceCode() {
+
+        stopDeviceTimer();
+
+        if (!modal.classList.contains("show")) {
+            return;
+        }
+
+        modal.classList.remove("show");
+
+        if (modalReturnFocus && modalReturnFocus.focus) {
+            modalReturnFocus.focus();
+        }
+
+        modalReturnFocus = null;
+    }
+
+    if (window.cobbleRealm && window.cobbleRealm.onMicrosoftDeviceCode) {
+
+        window.cobbleRealm.onMicrosoftDeviceCode((data) => {
+
+            /* null = connexion terminée ou annulée : on ferme la fenêtre */
+            if (!data) {
+                hideDeviceCode();
+                return;
+            }
+
+            showDeviceCode(data);
+        });
+    }
+
+    deviceCopy.addEventListener("click", async () => {
+
+        let result = null;
+
+        try {
+            result = await window.cobbleRealm.copyMicrosoftCode();
+        } catch { /* message ci-dessous */ }
+
+        deviceCopy.textContent = result && result.success ? "Code copié ✓" : "Copie impossible";
+
+        setTimeout(() => { deviceCopy.textContent = "Copier le code"; }, 2200);
+    });
+
+    deviceReopen.addEventListener("click", async () => {
+
+        let result = null;
+
+        try {
+            result = await window.cobbleRealm.openMicrosoftLoginPage();
+        } catch { /* message ci-dessous */ }
+
+        deviceStatus.textContent = result && result.success
+            ? "Page rouverte dans ton navigateur."
+            : "Impossible d'ouvrir la page. Recopie l'adresse indiquée ci-dessus dans ton navigateur.";
+    });
+
+    async function cancelLogin() {
+
+        try {
+            await window.cobbleRealm.cancelMicrosoftLogin();
+        } catch { /* la fenêtre se ferme de toute façon */ }
+
+        hideDeviceCode();
+    }
+
+    deviceCancel.addEventListener("click", cancelLogin);
+
+    /* Échap annule la connexion ; Tab reste dans la fenêtre. */
+    document.addEventListener("keydown", (event) => {
+
+        if (!modal.classList.contains("show")) {
+            return;
+        }
+
+        if (event.key === "Escape") {
+
+            event.preventDefault();
+            event.stopPropagation();
+            cancelLogin();
+
+            return;
+        }
+
+        if (event.key === "Tab") {
+
+            const items = [deviceCopy, deviceReopen, deviceCancel];
+            const index = items.indexOf(document.activeElement);
+
+            event.preventDefault();
+
+            items[(index + (event.shiftKey ? -1 : 1) + items.length) % items.length].focus();
+        }
+    }, true);
+
+
+    /* ----- connexion ----- */
+
+    async function startLogin({ switching = false } = {}) {
+
+        if (loginInProgress) {
+            return;
+        }
+
+        loginInProgress = true;
+        switchingAccount = switching;
+
+        setAccountState("loading", "Connexion...", "");
+
+        try {
+
+            const result = await window.cobbleRealm.loginMicrosoft();
+
+            hideDeviceCode();
+
+            if (result && result.success) {
+
+                showConnectedAccount(result.account && result.account.username);
+
+            } else if (result && result.code === "MICROSOFT_CANCELLED") {
+
+                showDisconnected();
+
+            } else if (result && result.code === "MICROSOFT_EXPIRED") {
+
+                showAccountError("Code expiré");
+
+            } else {
+
+                showAccountError("Connexion impossible");
+
+                console.error(result ? result.error : "Erreur inconnue");
+            }
+
+        } catch (error) {
+
+            hideDeviceCode();
+            showAccountError("Connexion impossible");
+
+            console.error(error);
+
+        } finally {
+
+            loginInProgress = false;
+            switchingAccount = false;
+        }
+    }
+
+
+    /* ----- menu du compte ----- */
+
+    function menuItems() {
+        return [accountSwitchItem, accountLogoutItem];
+    }
+
+    function resetLogoutConfirm() {
+
+        clearTimeout(logoutConfirmTimer);
+
+        accountLogoutItem.classList.remove("confirm");
+        accountLogoutItem.textContent = "Se déconnecter";
+    }
+
+    function closeAccountMenu({ returnFocus = false } = {}) {
+
+        accountMenu.hidden = true;
+        accountButton.setAttribute("aria-expanded", "false");
+        resetLogoutConfirm();
+
+        if (returnFocus) {
+            accountButton.focus();
+        }
+    }
+
+    function openAccountMenu() {
+
+        const busy = minecraftLaunching || loginInProgress;
+
+        accountMenuUser.textContent = accountEmail || "Compte connecté";
+
+        accountSwitchItem.disabled = busy;
+        accountLogoutItem.disabled = busy;
+
+        accountMenuNote.hidden = !busy;
+        accountMenuNote.textContent = busy ? "Indisponible pendant le lancement." : "";
+
+        accountMenu.hidden = false;
+        accountButton.setAttribute("aria-expanded", "true");
+
+        (busy ? accountButton : accountSwitchItem).focus();
+    }
+
+    function onAccountActivate() {
+
+        if (!microsoftConnected) {
+
+            startLogin();
+            return;
+        }
+
+        if (accountMenu.hidden) {
+            openAccountMenu();
+        } else {
+            closeAccountMenu({ returnFocus: true });
+        }
+    }
+
+    accountButton.addEventListener("click", onAccountActivate);
+
+    accountButton.addEventListener("keydown", (event) => {
+
+        if (event.key === "Enter" || event.key === " ") {
+
+            event.preventDefault();
+            onAccountActivate();
+        }
+    });
+
+    accountMenu.addEventListener("keydown", (event) => {
+
+        const items = menuItems().filter((item) => !item.disabled);
+        const index = items.indexOf(document.activeElement);
+
+        if (event.key === "Escape") {
+
+            event.preventDefault();
+            closeAccountMenu({ returnFocus: true });
+
+        } else if (event.key === "ArrowDown" && items.length) {
+
+            event.preventDefault();
+            items[(index + 1) % items.length].focus();
+
+        } else if (event.key === "ArrowUp" && items.length) {
+
+            event.preventDefault();
+            items[(index - 1 + items.length) % items.length].focus();
+
+        } else if (event.key === "Tab") {
+
+            closeAccountMenu();
+        }
+    });
+
+    document.addEventListener("click", (event) => {
+
+        if (!accountMenu.hidden && !accountMenu.contains(event.target) && !accountButton.contains(event.target)) {
+            closeAccountMenu();
+        }
+    });
+
+    async function logoutAccount() {
+
+        let result = null;
+
+        try {
+            result = await window.cobbleRealm.logoutMicrosoft();
+        } catch { /* message ci-dessous */ }
+
+        if (result && result.success) {
 
             showDisconnected();
 
+            return true;
         }
 
+        accountMenuNote.hidden = false;
+        accountMenuNote.textContent = (result && result.error) || "La déconnexion a échoué.";
+
+        return false;
     }
 
+    accountLogoutItem.addEventListener("click", async () => {
 
+        /* Une confirmation en une étape : un second clic dans les 4 secondes déconnecte. */
+        if (!accountLogoutItem.classList.contains("confirm")) {
 
-    /* =========================
-       CODE MICROSOFT
-    ========================== */
+            accountLogoutItem.classList.add("confirm");
+            accountLogoutItem.textContent = "Confirmer la déconnexion";
 
+            clearTimeout(logoutConfirmTimer);
+            logoutConfirmTimer = setTimeout(resetLogoutConfirm, 4000);
 
-    if (
-        window.cobbleRealm &&
-        window.cobbleRealm
-            .onMicrosoftDeviceCode
-    ) {
-
-        window.cobbleRealm
-            .onMicrosoftDeviceCode(
-
-                (data) => {
-
-                    deviceCode.textContent =
-                        data.userCode ||
-                        "----";
-
-
-                    modal.classList.add(
-                        "show"
-                    );
-
-                }
-
-            );
-
-    }
-
-
-
-    /* =========================
-       CLIC COMPTE
-    ========================== */
-
-
-    accountButton.addEventListener(
-
-        "click",
-
-        async () => {
-
-
-            /*
-             * Déjà connecté :
-             * pour l'instant on ne fait rien.
-             * Plus tard on ajoutera
-             * un menu compte / déconnexion.
-             */
-
-            if (
-                microsoftConnected
-            ) {
-
-                return;
-            }
-
-
-            if (
-                loginInProgress
-            ) {
-
-                return;
-            }
-
-
-            loginInProgress =
-                true;
-
-
-            accountText.textContent =
-                "Connexion...";
-
-
-            accountDot.classList.remove(
-                "offline",
-                "error"
-            );
-
-
-            accountDot.classList.add(
-                "loading"
-            );
-
-
-            try {
-
-
-                const result =
-                    await window
-                        .cobbleRealm
-                        .loginMicrosoft();
-
-
-                modal.classList.remove(
-                    "show"
-                );
-
-
-                if (
-                    result &&
-                    result.success
-                ) {
-
-
-                    showConnectedAccount(
-
-                        result.account &&
-                        result.account
-                            .username
-
-                    );
-
-
-                } else {
-
-
-                    accountDot.classList.remove(
-                        "loading"
-                    );
-
-
-                    accountDot.classList.add(
-                        "error"
-                    );
-
-
-                    accountText.textContent =
-                        "Erreur de connexion";
-
-
-                    console.error(
-                        result
-                            ? result.error
-                            : "Erreur inconnue"
-                    );
-
-                }
-
-
-            } catch (error) {
-
-
-                modal.classList.remove(
-                    "show"
-                );
-
-
-                accountDot.classList.remove(
-                    "loading"
-                );
-
-
-                accountDot.classList.add(
-                    "error"
-                );
-
-
-                accountText.textContent =
-                    "Erreur de connexion";
-
-
-                console.error(
-                    error
-                );
-
-
-            } finally {
-
-
-                loginInProgress =
-                    false;
-
-
-            }
-
-
+            return;
         }
 
-    );
+        resetLogoutConfirm();
+
+        if (await logoutAccount()) {
+            closeAccountMenu({ returnFocus: true });
+        }
+    });
+
+    async function switchAccount() {
+
+        if (loginInProgress || minecraftLaunching) {
+            return;
+        }
+
+        if (microsoftConnected && !(await logoutAccount())) {
+            return;
+        }
+
+        closeAccountMenu();
+        startLogin({ switching: true });
+    }
+
+    accountSwitchItem.addEventListener("click", switchAccount);
 
 
 
@@ -1837,64 +3489,221 @@ const ramSelect =
     document.getElementById("ramSelect");
 
 /* =========================
-   PARAMÈTRES RAM
+   PARAMÈTRES
 ========================= */
 
-async function loadRamSetting() {
+const settingsSaved = document.getElementById("settingsSaved");
+const ramHint = document.getElementById("ramHint");
+const ramWarning = document.getElementById("ramWarning");
+const ramReset = document.getElementById("ramReset");
+const onLaunchSelect = document.getElementById("onLaunchSelect");
+const notificationsToggle = document.getElementById("notificationsToggle");
+const uiScaleSelect = document.getElementById("uiScaleSelect");
+const motionSelect = document.getElementById("motionSelect");
+const repairStatus = document.getElementById("repairStatus");
+const settingsRepairButton = document.getElementById("settingsRepair");
+
+let settingsSavedTimer = null;
+let recommendedRam = 6;
+
+function flashSettingsSaved(text) {
+
+    settingsSaved.textContent = text;
+
+    clearTimeout(settingsSavedTimer);
+    settingsSavedTimer = setTimeout(() => { settingsSaved.textContent = ""; }, 2500);
+}
+
+async function saveSetting(changes) {
 
     try {
 
-        const settings =
-            await window.cobbleRealm
-                .getLauncherSettings();
+        const result = await window.cobbleRealm.saveLauncherSettings(changes);
 
-        if (
-            settings &&
-            settings.ram
-        ) {
+        flashSettingsSaved(result && result.success ? "Enregistré ✓" : "L'enregistrement a échoué");
 
-            ramSelect.value =
-                String(settings.ram);
-        }
+        return result;
 
     } catch (error) {
 
-        console.error(
-            "Erreur chargement RAM :",
-            error
-        );
+        console.error("Erreur sauvegarde paramètres :", error);
+        flashSettingsSaved("L'enregistrement a échoué");
+
+        return null;
     }
 }
 
+/* Indication sous la liste de RAM : jamais d'avertissement inutile. */
+function updateRamNotes() {
 
-ramSelect.addEventListener(
-    "change",
+    const chosen = Number(ramSelect.value);
 
-    async () => {
+    ramHint.textContent = "Recommandé pour CobbleRealm : " + recommendedRam + " Go.";
 
-        const ram =
-            Number(ramSelect.value);
+    let warning = "";
 
-        try {
-
-            await window.cobbleRealm
-                .saveLauncherSettings({
-                    ram: ram
-                });
-
-            console.log(
-                `[CobbleRealm] RAM sauvegardée : ${ram} Go`
-            );
-
-        } catch (error) {
-
-            console.error(
-                "Erreur sauvegarde RAM :",
-                error
-            );
-        }
+    if (chosen < recommendedRam) {
+        warning = "C'est moins que la valeur recommandée : le jeu risque de saccader.";
+    } else if (chosen > Math.max(recommendedRam + 4, 8)) {
+        warning = "Plus de mémoire n'accélère pas le jeu et peut ralentir ton ordinateur.";
     }
-);
+
+    ramWarning.textContent = warning;
+    ramWarning.hidden = !warning;
+    ramReset.disabled = chosen === recommendedRam;
+}
+
+async function loadSettingsPage() {
+
+    try {
+
+        const settings = await window.cobbleRealm.getLauncherSettings();
+
+        if (!settings || !settings.ram) {
+            return;
+        }
+
+        /*
+         * Les choix de RAM dépendent de l'ordinateur (au moins 2 Go restent réservés à Windows)
+         * et la valeur recommandée est repérée dans la liste.
+         */
+        const maxRam = Number(settings.maxRam) || 16;
+        recommendedRam = Number(settings.recommendedRam) || recommendedRam;
+
+        const choices = [2, 3, 4, 5, 6, 8, 10, 12, 14, 16].filter((gb) => gb <= maxRam);
+
+        for (const extra of [maxRam, recommendedRam]) {
+            if (!choices.includes(extra) && extra <= maxRam) {
+                choices.push(extra);
+            }
+        }
+
+        choices.sort((x, y) => x - y);
+
+        ramSelect.innerHTML = "";
+
+        for (const gb of choices) {
+
+            const option = document.createElement("option");
+
+            option.value = String(gb);
+            option.textContent = gb + " Go" + (gb === recommendedRam ? " (recommandé)" : "");
+
+            ramSelect.appendChild(option);
+        }
+
+        ramSelect.value = String(settings.ram);
+
+        onLaunchSelect.value = settings.onLaunch;
+        notificationsToggle.checked = settings.notifications !== false;
+        uiScaleSelect.value = String(settings.uiScale);
+        motionSelect.value = settings.reduceMotion;
+
+        if (typeof applyMotionSetting === "function") {
+            applyMotionSetting(settings.reduceMotion);
+        }
+
+        updateRamNotes();
+
+    } catch (error) {
+
+        console.error("Erreur chargement des paramètres :", error);
+    }
+}
+
+async function loadRamSetting() {
+
+    await loadSettingsPage();
+}
+
+ramSelect.addEventListener("change", async () => {
+
+    updateRamNotes();
+    await saveSetting({ ram: Number(ramSelect.value) });
+});
+
+ramReset.addEventListener("click", async () => {
+
+    ramSelect.value = String(recommendedRam);
+    updateRamNotes();
+    await saveSetting({ ram: recommendedRam });
+});
+
+onLaunchSelect.addEventListener("change", () => saveSetting({ onLaunch: onLaunchSelect.value }));
+notificationsToggle.addEventListener("change", () => saveSetting({ notifications: notificationsToggle.checked }));
+uiScaleSelect.addEventListener("change", () => saveSetting({ uiScale: uiScaleSelect.value }));
+
+motionSelect.addEventListener("change", async () => {
+
+    await saveSetting({ reduceMotion: motionSelect.value });
+
+    if (typeof applyMotionSetting === "function") {
+        applyMotionSetting(motionSelect.value);
+    }
+});
+
+document.getElementById("openFolder").addEventListener("click", async () => {
+
+    let result = null;
+
+    try {
+        result = await window.cobbleRealm.openGameFolder();
+    } catch { /* message ci-dessous */ }
+
+    if (!result || !result.success) {
+        flashSettingsSaved("Impossible d'ouvrir le dossier");
+    }
+});
+
+settingsRepairButton.addEventListener("click", async () => {
+
+    if (minecraftLaunching) {
+
+        repairStatus.textContent = "Indisponible pendant le lancement de Minecraft.";
+
+        return;
+    }
+
+    settingsRepairButton.disabled = true;
+    minecraftLaunching = true;
+    repairStatus.textContent = "Vérification des fichiers en cours...";
+
+    try {
+
+        const result = await window.cobbleRealm.repairInstallation();
+
+        repairStatus.textContent = result && result.success
+            ? "Installation vérifiée : tout est en ordre ✓"
+            : "La réparation n'a pas pu se terminer. Les détails sont affichés sur l'écran d'accueil.";
+
+    } catch {
+
+        repairStatus.textContent = "La réparation n'a pas pu se terminer.";
+
+    } finally {
+
+        minecraftLaunching = false;
+        settingsRepairButton.disabled = false;
+    }
+});
+
+document.getElementById("aboutCopy").addEventListener("click", async (event) => {
+
+    const button = event.currentTarget;
+    const original = button.textContent;
+
+    let result = null;
+
+    try {
+        result = await window.cobbleRealm.copySupportReport();
+    } catch { /* message ci-dessous */ }
+
+    button.textContent = result && result.success ? "Informations copiées ✓" : "Copie impossible";
+
+    setTimeout(() => { button.textContent = original; }, 2500);
+});
+
+document.getElementById("aboutHelp").addEventListener("click", () => window.cobbleRealm.openDiscord());
 
 const playText =
     document.getElementById("playText");
@@ -1911,17 +3720,29 @@ function setPlayState(
     disabled = false
 ) {
 
-    playText.textContent = text;
-    playIcon.textContent = icon;
-    playButton.disabled = disabled;
+    /* le sablier emoji devient un vrai spinner CSS */
+    const busy = icon === "⏳";
 
-    if (disabled) {
-        playButton.style.opacity = "0.78";
-        playButton.style.cursor = "wait";
-    } else {
-        playButton.style.opacity = "1";
-        playButton.style.cursor = "pointer";
+    if (playText.textContent !== text) {
+
+        playText.textContent = text;
+
+        playText.classList.remove("play-text-swap");
+        void playText.offsetWidth;
+        playText.classList.add("play-text-swap");
     }
+
+    playIcon.className = busy ? "play-icon play-spinner" : "play-icon";
+    playIcon.textContent = busy ? "" : icon;
+    playIcon.setAttribute("aria-hidden", "true");
+
+    playButton.disabled = disabled;
+    playButton.dataset.state = !disabled ? "ready" : (busy ? "busy" : "done");
+    playButton.setAttribute("aria-busy", busy ? "true" : "false");
+
+    /* texte long : taille réduite pour rester lisible dans le bouton */
+    playButton.classList.toggle("compact", String(text).length > 13);
+    playButton.classList.toggle("tiny", String(text).length > 22);
 }
 
 
@@ -1934,6 +3755,11 @@ let launcherReady = false;
 const launcherUpdateStatus =
     document.getElementById(
         "launcherUpdateStatus"
+    );
+
+const launcherProgress =
+    document.getElementById(
+        "launcherProgress"
     );
 
 setPlayState(
@@ -1974,57 +3800,430 @@ if (
 
             if (data.status === "downloading") {
 
-                launcherReady = false;
+    launcherReady = false;
 
-                setPlayState(
-                    "TÉLÉCHARGEMENT...",
-                    "⏳",
-                    true
-                );
+    if (launcherProgress) {
+        launcherProgress.style.display = "block";
+        launcherProgress.textContent = "0%";
+    }
 
-                return;
-            }
+    setPlayState(
+        "TÉLÉCHARGEMENT...",
+        "⏳",
+        true
+    );
+
+    return;
+}
+
+if (data.status === "download-progress") {
+
+    if (launcherProgress) {
+        launcherProgress.style.display = "block";
+        launcherProgress.textContent = data.message;
+    }
+
+    return;
+}
 
             if (data.status === "installing") {
 
-                launcherReady = false;
+    launcherReady = false;
 
-                setPlayState(
-                    "INSTALLATION...",
-                    "⏳",
-                    true
-                );
+    if (launcherProgress) {
+        launcherProgress.style.display = "block";
+        launcherProgress.textContent = "0%";
+    }
 
-                return;
-            }
+    setPlayState(
+        "INSTALLATION...",
+        "⏳",
+        true
+    );
+
+    return;
+}
+
+if (data.status === "install-progress") {
+
+    if (launcherProgress) {
+        launcherProgress.style.display = "block";
+        launcherProgress.textContent = data.message;
+    }
+
+    return;
+}
 
             if (data.status === "ready") {
 
-                launcherReady = true;
+    refreshAppInfo();
 
-                setPlayState(
-                    "JOUER",
-                    "▶",
-                    false
-                );
+    launcherReady = true;
 
-                return;
-            }
+    if (launcherProgress) {
+        launcherProgress.style.display = "none";
+        launcherProgress.textContent = "0%";
+    }
 
-            if (data.status === "error") {
+    setPlayState(
+        data.updateAvailable ? "METTRE À JOUR ET JOUER" : "JOUER",
+        "▶",
+        false
+    );
 
-                launcherReady = false;
-
-                setPlayState(
-                    "ERREUR DE MISE À JOUR",
-                    "⚠",
-                    true
-                );
-
-                return;
-            }
+    return;
+}
         }
     );
+}
+
+
+/* =========================
+   MISE À JOUR DU MODPACK
+   (progression, erreurs, réparation)
+========================== */
+
+const updateBarWrap = document.getElementById("updateBarWrap");
+const updateBar = document.getElementById("updateBar");
+const updateDetail = document.getElementById("updateDetail");
+const updateWarning = document.getElementById("updateWarning");
+const playPanel = document.getElementById("playPanel");
+const errorBox = document.getElementById("errorBox");
+const errorTitle = document.getElementById("errorTitle");
+const errorText = document.getElementById("errorText");
+const errorActions = document.getElementById("errorActions");
+const errorCode = document.getElementById("errorCode");
+const selfUpdateBox = document.getElementById("selfUpdateBox");
+const selfUpdateText = document.getElementById("selfUpdateText");
+const selfUpdateButton = document.getElementById("selfUpdateButton");
+
+/* Temps restant lisible : arrondi à la minute pour ne pas "trembler". */
+function formatEta(seconds) {
+
+    if (seconds === null || seconds === undefined || seconds <= 0) {
+        return "";
+    }
+
+    if (seconds < 60) {
+        return "moins d'1 min restante";
+    }
+
+    if (seconds < 3600) {
+
+        const minutes = Math.round(seconds / 60);
+
+        return "≈ " + minutes + " min restante" + (minutes > 1 ? "s" : "");
+    }
+
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.round((seconds % 3600) / 60);
+
+    return "≈ " + hours + " h " + String(minutes).padStart(2, "0") + " min restantes";
+}
+
+/* Avancement de la barre : transformation (animation légère), valeur gardée pour les lecteurs d'écran. */
+function setProgressFill(percent) {
+
+    const value = Math.max(0, Math.min(100, Number(percent) || 0));
+
+    updateBar.style.transform = "scaleX(" + (value / 100) + ")";
+    updateBar.dataset.value = String(value);
+}
+
+function formatBytes(bytes) {
+
+    if (bytes >= 1024 ** 3) {
+        return (bytes / 1024 ** 3).toFixed(2) + " Go";
+    }
+
+    if (bytes >= 1024 ** 2) {
+        return (bytes / 1024 ** 2).toFixed(1) + " Mo";
+    }
+
+    return Math.max(1, Math.round(bytes / 1024)) + " Ko";
+}
+
+function resetUpdateUi() {
+
+    updateBarWrap.hidden = true;
+    setProgressFill(0);
+    updateDetail.textContent = "";
+    hideError();
+    updateWarning.hidden = true;
+}
+
+const progressTitle = document.getElementById("progressTitle");
+const progressEta = document.getElementById("progressEta");
+const progressTrack = document.getElementById("progressTrack");
+const cancelUpdateButton = document.getElementById("cancelUpdate");
+
+function resetCancelButton() {
+
+    cancelUpdateButton.disabled = false;
+    cancelUpdateButton.textContent = "Annuler";
+    cancelUpdateButton.title = "";
+}
+
+cancelUpdateButton.addEventListener("click", async () => {
+
+    cancelUpdateButton.disabled = true;
+    cancelUpdateButton.textContent = "Annulation...";
+
+    let result = null;
+
+    try {
+        result = await window.cobbleRealm.cancelUpdate();
+    } catch { /* l'état est rétabli ci-dessous */ }
+
+    /* Trop tard : l'installation des fichiers a commencé, elle se termine proprement. */
+    if (result && result.cancelled === false) {
+
+        cancelUpdateButton.textContent = "Installation...";
+        cancelUpdateButton.title = "L'installation est en cours, elle ne peut plus être annulée.";
+    }
+});
+
+if (window.cobbleRealm && window.cobbleRealm.onUpdateProgress) {
+
+    window.cobbleRealm.onUpdateProgress((e) => {
+
+        if (!e) {
+            return;
+        }
+
+        if (e.step === "scan") {
+
+            launcherUpdateStatus.textContent =
+                "Vérification des fichiers... " + (e.percent || 0) + "%";
+
+            return;
+        }
+
+        if (e.step === "plan") {
+
+            launcherUpdateStatus.textContent = e.message;
+
+            return;
+        }
+
+        if (e.step === "download") {
+
+            const percent = e.percent || 0;
+
+            if (updateBarWrap.hidden) {
+                resetCancelButton();
+            }
+
+            updateBarWrap.hidden = false;
+            setProgressFill(percent);
+
+            progressTrack.setAttribute("aria-valuenow", String(percent));
+            progressTitle.textContent = "Téléchargement... " + percent + " %";
+            progressEta.textContent = formatEta(e.etaSeconds);
+
+            launcherUpdateStatus.textContent = "Mise à jour du modpack";
+
+            const detail =
+                (e.file ? e.file + " · " : "") +
+                e.filesDone + "/" + e.filesTotal + " fichiers · " +
+                formatBytes(e.bytesDone) + " / " + formatBytes(e.bytesTotal) +
+                (e.speed > 0 ? " · " + formatBytes(e.speed) + "/s" : "");
+
+            updateDetail.textContent = detail;
+            updateDetail.title = detail;
+
+            return;
+        }
+
+        if (e.step === "apply") {
+
+            setProgressFill(100);
+            progressTitle.textContent = "Installation...";
+            progressEta.textContent = "";
+            launcherUpdateStatus.textContent = "Installation...";
+
+            cancelUpdateButton.disabled = true;
+            cancelUpdateButton.textContent = "Installation...";
+
+            return;
+        }
+
+        if (e.step === "done") {
+
+            updateBarWrap.hidden = true;
+        }
+    });
+}
+
+/*
+ * Erreurs : une seule présentation pour toutes les étapes (mise à jour, connexion, Java, jeu...).
+ * Le message est déjà rédigé pour le joueur par le processus principal ; les boutons dépendent de l'erreur.
+ */
+
+const ERROR_ACTIONS = {
+    retry: {
+        label: "Réessayer",
+        primary: true,
+        run: () => {
+            hideError();
+            playButton.click();
+        }
+    },
+    repair: {
+        label: "Réparer l'installation",
+        run: () => runRepair()
+    },
+    copy: {
+        label: "Copier le rapport",
+        run: async (button) => {
+
+            const original = button.textContent;
+            let result = null;
+
+            try {
+                result = await window.cobbleRealm.copySupportReport();
+            } catch { /* on affiche l'échec ci-dessous */ }
+
+            button.textContent = result && result.success ? "Rapport copié ✓" : "Copie impossible";
+
+            setTimeout(() => { button.textContent = original; }, 2500);
+        }
+    },
+    help: {
+        label: "Obtenir de l'aide",
+        run: () => window.cobbleRealm.openDiscord()
+    },
+    switchAccount: {
+        label: "Changer de compte",
+        run: () => {
+            hideError();
+            switchAccount();
+        }
+    }
+};
+
+function hideError() {
+
+    errorBox.hidden = true;
+    playPanel.classList.remove("has-error");
+    errorActions.textContent = "";
+}
+
+function showError(err) {
+
+    const safe = err && typeof err === "object" ? err : {};
+
+    updateBarWrap.hidden = true;
+    updateWarning.hidden = true;
+
+    errorTitle.textContent = safe.title || "Une erreur est survenue";
+    errorText.textContent = safe.message || "Une erreur inattendue est survenue. Réessaie.";
+    errorCode.textContent = safe.code ? "Code : " + safe.code : "";
+
+    errorActions.textContent = "";
+
+    for (const name of Array.isArray(safe.actions) ? safe.actions : ["retry"]) {
+
+        const action = ERROR_ACTIONS[name];
+
+        if (!action) {
+            continue;
+        }
+
+        const button = document.createElement("button");
+        button.className = "error-button" + (action.primary ? " primary" : "");
+        button.textContent = action.label;
+        button.addEventListener("click", () => action.run(button));
+        errorActions.appendChild(button);
+    }
+
+    errorBox.classList.toggle("info", safe.severity === "info");
+
+    playPanel.classList.add("has-error");
+    errorBox.hidden = false;
+}
+
+if (window.cobbleRealm && window.cobbleRealm.onLaunchError) {
+
+    window.cobbleRealm.onLaunchError((err) => {
+
+        showError(err);
+
+        /* Le bouton JOUER redevient immédiatement utilisable. */
+        minecraftLaunching = false;
+        setPlayState("JOUER", "▶", false);
+    });
+}
+
+if (window.cobbleRealm && window.cobbleRealm.onUpdateWarning) {
+
+    window.cobbleRealm.onUpdateWarning((w) => {
+
+        updateWarning.textContent = (w && w.message) || "";
+        updateWarning.hidden = !updateWarning.textContent;
+    });
+}
+
+async function runRepair() {
+
+    hideError();
+    minecraftLaunching = true;
+    setPlayState("RÉPARATION...", "⏳", true);
+
+    try {
+
+        const result = await window.cobbleRealm.repairInstallation();
+
+        if (result && result.success) {
+
+            updateWarning.textContent = "Installation réparée. Tu peux jouer.";
+            updateWarning.hidden = false;
+        }
+        /* En cas d'échec, l'événement launch-error réaffiche l'erreur. */
+
+    } catch (error) {
+
+        showError({
+            title: "Réparation impossible",
+            message: "La réparation a échoué. Réessaie, ou demande de l'aide.",
+            code: "REPAIR_FAILED",
+            actions: ["retry", "copy", "help"]
+        });
+
+    } finally {
+
+        minecraftLaunching = false;
+        setPlayState("JOUER", "▶", false);
+    }
+}
+
+if (window.cobbleRealm && window.cobbleRealm.onLauncherSelfUpdate) {
+
+    window.cobbleRealm.onLauncherSelfUpdate((info) => {
+
+        selfUpdateBox.hidden = false;
+
+        if (info && info.state === "ready") {
+
+            selfUpdateText.textContent =
+                "Nouvelle version du launcher prête (v" + info.version + ").";
+            selfUpdateButton.hidden = false;
+
+        } else {
+
+            selfUpdateText.textContent =
+                "Mise à jour du launcher en cours (v" + (info && info.version) + ")...";
+        }
+    });
+
+    selfUpdateButton.addEventListener("click", async () => {
+
+        const result = await window.cobbleRealm.installLauncherUpdate();
+
+        if (result && !result.success) {
+            selfUpdateText.textContent = result.error;
+        }
+    });
 }
 
 
@@ -2046,26 +4245,19 @@ if (
 
             if (data.type === "error") {
 
+                /*
+                 * Le message détaillé est affiché dans la boîte d'erreur (événement launch-error) ;
+                 * le bouton redevient tout de suite utilisable.
+                 */
                 minecraftLaunching = false;
 
                 setPlayState(
-                    "ERREUR",
-                    "⚠",
+                    "JOUER",
+                    "▶",
                     false
                 );
 
                 console.error(data.message);
-
-                setTimeout(
-                    () => {
-                        setPlayState(
-                            "JOUER",
-                            "▶",
-                            false
-                        );
-                    },
-                    2500
-                );
 
                 return;
             }
@@ -2073,7 +4265,7 @@ if (
             if (data.type === "success") {
 
                 setPlayState(
-                    "LANCÉ",
+                    "EN JEU",
                     "✓",
                     true
                 );
@@ -2166,6 +4358,8 @@ playButton.addEventListener(
 
         minecraftLaunching = true;
 
+        resetUpdateUi();
+
         setPlayState(
             "PRÉPARATION...",
             "⏳",
@@ -2187,47 +4381,23 @@ playButton.addEventListener(
             ) {
 
                 setPlayState(
-                    "LANCÉ",
+                    "EN JEU",
                     "✓",
                     true
                 );
 
             } else {
 
+                /* Le message clair est déjà affiché par la boîte d'erreur (événement launch-error). */
                 console.error(
                     "Erreur lancement Minecraft :",
                     result
                 );
 
-                if (
-                    result &&
-                    result.status === 403
-                ) {
-
-                    setPlayState(
-                        "APPID EN ATTENTE",
-                        "⚠",
-                        false
-                    );
-
-                } else {
-
-                    setPlayState(
-                        "ERREUR",
-                        "⚠",
-                        false
-                    );
-                }
-
-                setTimeout(
-                    () => {
-                        setPlayState(
-                            "JOUER",
-                            "▶",
-                            false
-                        );
-                    },
-                    3000
+                setPlayState(
+                    "JOUER",
+                    "▶",
+                    false
                 );
             }
 
@@ -2238,21 +4408,17 @@ playButton.addEventListener(
                 error
             );
 
-            setPlayState(
-                "ERREUR",
-                "⚠",
-                false
-            );
+            showError({
+                title: "Une erreur est survenue",
+                message: "Le lancement a échoué de façon inattendue. Réessaie, ou copie le rapport et demande de l'aide.",
+                code: "LAUNCH_UNEXPECTED",
+                actions: ["retry", "copy", "help"]
+            });
 
-            setTimeout(
-                () => {
-                    setPlayState(
-                        "JOUER",
-                        "▶",
-                        false
-                    );
-                },
-                3000
+            setPlayState(
+                "JOUER",
+                "▶",
+                false
             );
 
         } finally {
@@ -2410,23 +4576,184 @@ const consoleOutput =
     document.getElementById("consoleOutput");
 
 
+/* =========================
+   CONSOLE : LIGNES LISIBLES, FILTRE, COPIE, EXPORT
+========================= */
+
+const MAX_CONSOLE_LINES = 2000;
+
+const consoleFilter = document.getElementById("consoleFilter");
+const consoleCount = document.getElementById("consoleCount");
+const consoleJump = document.getElementById("consoleJump");
+
+let consoleQueue = [];
+let consoleFlushTimer = null;
+
+function consoleIsAtBottom() {
+
+    return consoleOutput.scrollHeight - consoleOutput.scrollTop - consoleOutput.clientHeight < 40;
+}
+
+function classifyLine(text) {
+
+    if (/\b(ERROR|FATAL|SEVERE|Exception|Erreur|échec|echec|crash)/i.test(text)) {
+        return "level-error";
+    }
+
+    if (/\b(WARN|WARNING|Attention|Avertissement)\b/i.test(text)) {
+        return "level-warn";
+    }
+
+    return "";
+}
+
+function updateConsoleCount() {
+
+    const total = consoleOutput.children.length;
+
+    consoleCount.textContent = total + " ligne" + (total > 1 ? "s" : "");
+}
+
+function flushConsole() {
+
+    consoleFlushTimer = null;
+
+    if (!consoleOutput || consoleQueue.length === 0) {
+        return;
+    }
+
+    const stickToBottom = consoleIsAtBottom();
+    const fragment = document.createDocumentFragment();
+
+    for (const entry of consoleQueue) {
+
+        const line = document.createElement("div");
+
+        line.className = ("log-line " + classifyLine(entry.text) + " " +
+            (/^\[CobbleRealm\]|^\[Launcher\]|^\[Erreur\]/.test(entry.text) ? "src-launcher" : "src-game")).replace(/\s+/g, " ").trim();
+
+        const time = document.createElement("span");
+        time.className = "log-time";
+        time.textContent = entry.time;
+
+        const text = document.createElement("span");
+        text.className = "log-text";
+        text.textContent = entry.text;
+
+        line.appendChild(time);
+        line.appendChild(text);
+        fragment.appendChild(line);
+    }
+
+    consoleQueue = [];
+    consoleOutput.appendChild(fragment);
+
+    /* au plus MAX_CONSOLE_LINES lignes : les plus anciennes disparaissent */
+    while (consoleOutput.children.length > MAX_CONSOLE_LINES) {
+        consoleOutput.removeChild(consoleOutput.firstChild);
+    }
+
+    if (stickToBottom) {
+
+        consoleOutput.scrollTop = consoleOutput.scrollHeight;
+        consoleJump.hidden = true;
+
+    } else {
+
+        consoleJump.hidden = false;
+    }
+
+    updateConsoleCount();
+}
+
 function addConsoleLine(message) {
 
     if (!consoleOutput) {
         return;
     }
 
-    const line =
-        document.createElement("div");
+    consoleQueue.push({
+        time: new Date().toTimeString().slice(0, 8),
+        text: String(message)
+    });
 
-    line.textContent =
-        String(message);
-
-    consoleOutput.appendChild(line);
-
-    consoleOutput.scrollTop =
-        consoleOutput.scrollHeight;
+    /* les messages arrivent par rafales : une seule mise à jour toutes les 40 ms */
+    if (!consoleFlushTimer) {
+        consoleFlushTimer = setTimeout(flushConsole, 40);
+    }
 }
+
+consoleOutput.addEventListener("scroll", () => {
+
+    if (consoleIsAtBottom()) {
+        consoleJump.hidden = true;
+    }
+});
+
+consoleJump.addEventListener("click", () => {
+
+    consoleOutput.scrollTop = consoleOutput.scrollHeight;
+    consoleJump.hidden = true;
+});
+
+consoleFilter.addEventListener("change", () => {
+
+    consoleOutput.dataset.filter = consoleFilter.value;
+    consoleOutput.scrollTop = consoleOutput.scrollHeight;
+});
+
+function flashConsoleButton(button, text, original) {
+
+    button.textContent = text;
+
+    setTimeout(() => { button.textContent = original; }, 2500);
+}
+
+document.getElementById("consoleCopy").addEventListener("click", async (event) => {
+
+    const button = event.currentTarget;
+
+    let result = null;
+
+    try {
+        result = await window.cobbleRealm.copyConsole();
+    } catch { /* message ci-dessous */ }
+
+    flashConsoleButton(button, result && result.success ? "Copié ✓" : "Copie impossible", "Copier");
+});
+
+document.getElementById("consoleExport").addEventListener("click", async (event) => {
+
+    const button = event.currentTarget;
+
+    let result = null;
+
+    try {
+        result = await window.cobbleRealm.exportLogs();
+    } catch { /* message ci-dessous */ }
+
+    if (result && result.success) {
+        flashConsoleButton(button, "Enregistré ✓ " + result.fileName, "Exporter");
+    } else if (result && result.cancelled) {
+        flashConsoleButton(button, "Export annulé", "Exporter");
+    } else {
+        flashConsoleButton(button, "Export impossible", "Exporter");
+    }
+});
+
+document.getElementById("consoleClear").addEventListener("click", async () => {
+
+    consoleQueue = [];
+    consoleOutput.textContent = "";
+    consoleJump.hidden = true;
+    updateConsoleCount();
+
+    try {
+        await window.cobbleRealm.clearLogs();
+    } catch { /* l'affichage est déjà vide */ }
+});
+
+addConsoleLine("[CobbleRealm] Console prête.");
 
 
 if (
@@ -2444,26 +4771,18 @@ if (
 
 
 const FALLBACK_NEWS = {
-    "badge": "📢 MISE À JOUR V10",
-  "title": "Bienvenue sur",
-  "titleHighlight": "CobbleRealm",
-  "version": "V10",
-  "paragraphs": [
-    [
-      {"text": "La ", "className": ""},
-      {"text": "V10", "className": "cyan"},
-      {"text": " arrive sur CobbleRealm avec de nombreuses nouveautés ! Découvrez ", "className": ""},
-      {"text": "un nouveau mod et de nouvelles animations pour le casino", "className": "green"},
-      {"text": ", ainsi que l'arrivée des ", "className": ""},
-      {"text": "combats Pokémon en 2v2 et du mode Ranked", "className": "orange"},
-      {"text": ". Profitez également de ", "className": ""},
-      {"text": "nombreuses nouvelles textures", "className": "purple"},
-      {"text": " et partez relever les défis d'une ", "className": ""},
-      {"text": "toute nouvelle Tour de Combat", "className": "cyan"},
-      {"text": " !", "className": ""}
-    ]
-  ]
-};
+        badge: "📣 ACTUALITÉS",
+        title: "Bienvenue sur",
+        titleHighlight: "CobbleRealm",
+        version: "",
+        paragraphs: [
+            [
+                { text: "Retrouve ici les ", className: "" },
+                { text: "dernières nouveautés", className: "cyan" },
+                { text: " de CobbleRealm dès que tu es connecté à Internet.", className: "" }
+            ]
+        ]
+    };
 
 
     function buildNewsParagraph(paragraph) {
@@ -2495,8 +4814,6 @@ const FALLBACK_NEWS = {
 
     function renderNews(news) {
         const card = document.getElementById("updateCard");
-        const versionBadge = document.getElementById("newsVersionBadge");
-
         if (!card) {
             return;
         }
@@ -2521,40 +4838,170 @@ const FALLBACK_NEWS = {
             ? safeNews.version
             : FALLBACK_NEWS.version;
 
-        if (versionBadge) {
-            versionBadge.textContent = `★ CobbleRealm ${versionText}`;
-        }
-
-        card.textContent = "";
-
-        const badge = document.createElement("div");
-        badge.className = "update-badge";
-        badge.textContent = badgeText;
-        card.appendChild(badge);
-
-        const title = document.createElement("h1");
-
-        if (titleHighlight && titleText) {
-            title.appendChild(document.createTextNode(`${titleText} `));
-
-            const highlight = document.createElement("span");
-            highlight.className = "realm-gradient";
-            highlight.textContent = titleHighlight;
-            title.appendChild(highlight);
-        } else if (titleText) {
-            title.textContent = titleText;
-        }
-
-        card.appendChild(title);
-
         const paragraphs = Array.isArray(safeNews.paragraphs) && safeNews.paragraphs.length > 0
             ? safeNews.paragraphs
             : FALLBACK_NEWS.paragraphs;
 
-        paragraphs.forEach((paragraph) => {
-            card.appendChild(buildNewsParagraph(paragraph));
+        currentNewsView = { badgeText, titleText, titleHighlight, paragraphs };
+
+        card.textContent = "";
+        card.removeAttribute("aria-busy");
+        fillNewsNodes(card, currentNewsView);
+
+        /* Boutons utilisés quand la place manque (voir fitNews) */
+        const more = document.createElement("button");
+        more.className = "news-more";
+        more.textContent = "Lire la suite";
+        more.addEventListener("click", openNewsModal);
+        card.appendChild(more);
+
+        const pill = document.createElement("button");
+        pill.className = "news-pill";
+        pill.textContent = badgeText;
+        pill.setAttribute("aria-label", "Lire l'annonce : " + badgeText);
+        pill.addEventListener("click", openNewsModal);
+        card.appendChild(pill);
+
+        queueFitNews();
+    }
+
+
+    /* Construit badge + titre + paragraphes (texte seulement, jamais de HTML venant du réseau). */
+    function fillNewsNodes(container, view) {
+
+        const badge = document.createElement("div");
+        badge.className = "update-badge";
+        badge.textContent = view.badgeText;
+        container.appendChild(badge);
+
+        const title = document.createElement("h1");
+
+        if (view.titleHighlight && view.titleText) {
+            title.appendChild(document.createTextNode(`${view.titleText} `));
+
+            const highlight = document.createElement("span");
+            highlight.className = "realm-gradient";
+            highlight.textContent = view.titleHighlight;
+            title.appendChild(highlight);
+        } else if (view.titleText) {
+            title.textContent = view.titleText;
+        }
+
+        container.appendChild(title);
+
+        view.paragraphs.forEach((paragraph) => {
+            container.appendChild(buildNewsParagraph(paragraph));
         });
     }
+
+
+    /*
+     * L'annonce s'adapte à la place disponible, sans jamais recouvrir le panneau JOUER :
+     * complète -> compacte -> minimale -> simple pastille (« Lire la suite » ouvre le texte entier).
+     */
+    const NEWS_STAGES = ["", "compact", "mini", "pill"];
+    const NEWS_GAP = 16;
+    let currentNewsView = null;
+
+    function fitNews() {
+
+        const card = document.getElementById("updateCard");
+        const panel = document.querySelector(".play-panel");
+
+        if (!card || !panel || !card.firstChild) {
+            return;
+        }
+
+        for (const stage of NEWS_STAGES) {
+
+            card.dataset.stage = stage;
+
+            const c = card.getBoundingClientRect();
+            const p = panel.getBoundingClientRect();
+
+            const sideBySide = p.right + NEWS_GAP > c.left && p.left - NEWS_GAP < c.right;
+            const insideWindow = c.bottom <= window.innerHeight - NEWS_GAP;
+
+            if (insideWindow && (!sideBySide || c.bottom + NEWS_GAP <= p.top)) {
+                return;
+            }
+        }
+    }
+
+    /* Zone du haut du panneau : hauteur constante dès qu'une progression, un avertissement ou une erreur s'affiche. */
+    function syncBusy() {
+
+        const panel = document.querySelector(".play-panel");
+
+        const busy =
+            !document.getElementById("updateBarWrap").hidden ||
+            !document.getElementById("updateWarning").hidden ||
+            !document.getElementById("errorBox").hidden;
+
+        panel.classList.toggle("busy", busy);
+    }
+
+    /* Immédiat (sans attendre l'affichage) : fonctionne même si la fenêtre est cachée derrière une autre. */
+    function queueFitNews() {
+
+        syncBusy();
+        fitNews();
+    }
+
+    window.addEventListener("resize", queueFitNews);
+
+    if (window.ResizeObserver) {
+        new ResizeObserver(queueFitNews).observe(document.querySelector(".play-panel"));
+    }
+
+    /* Tout changement du contenu du panneau (progression, erreur, avertissement) relance l'ajustement. */
+    new MutationObserver(queueFitNews).observe(
+        document.querySelector(".play-panel"),
+        { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["hidden", "style", "class"] }
+    );
+
+
+    /* Fenêtre « Lire la suite » */
+    const newsModal = document.getElementById("newsModal");
+    const newsModalBody = document.getElementById("newsModalBody");
+    const newsModalClose = document.getElementById("newsModalClose");
+    let newsModalReturnFocus = null;
+
+    function openNewsModal() {
+
+        if (!currentNewsView) {
+            return;
+        }
+
+        newsModalReturnFocus = document.activeElement;
+        newsModalBody.textContent = "";
+        fillNewsNodes(newsModalBody, currentNewsView);
+        newsModal.classList.add("show");
+        newsModalClose.focus();
+    }
+
+    function closeNewsModal() {
+
+        newsModal.classList.remove("show");
+
+        if (newsModalReturnFocus && newsModalReturnFocus.focus) {
+            newsModalReturnFocus.focus();
+        }
+    }
+
+    newsModalClose.addEventListener("click", closeNewsModal);
+
+    newsModal.addEventListener("click", (event) => {
+        if (event.target === newsModal) {
+            closeNewsModal();
+        }
+    });
+
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && newsModal.classList.contains("show")) {
+            closeNewsModal();
+        }
+    });
 
 
     async function loadLauncherNews() {
@@ -2598,23 +5045,11 @@ const FALLBACK_NEWS = {
                 await window.cobbleRealm
                     .checkCobbleRealmUpdate();
 
-            if (
-                result &&
-                result.success
-            ) {
+            /* Le texte vient du processus principal : même module et même requête que la mise à jour. */
+            if (result && result.message) {
 
-                if (
-                    result.updateAvailable
-                ) {
-
-                    statusElement.textContent =
-                        `Mise à jour disponible — v${result.remoteVersion}`;
-
-                } else {
-
-                    statusElement.textContent =
-                        `CobbleRealm à jour — v${result.localVersion}`;
-                }
+                statusElement.textContent =
+                    result.message;
 
             } else {
 
@@ -2630,7 +5065,327 @@ const FALLBACK_NEWS = {
     }
 
 
+    /* =========================
+       INFORMATIONS FIABLES : VERSIONS, SERVEUR, CHANGELOG
+    ========================== */
+
+    const brandSubtitle = document.getElementById("brandSubtitle");
+    const chipMinecraft = document.getElementById("chipMinecraft");
+    const chipFabric = document.getElementById("chipFabric");
+    const chipPack = document.getElementById("chipPack");
+
+    /* Versions réellement installées (launcher, pack, Minecraft, Fabric) */
+    async function refreshAppInfo() {
+
+        try {
+
+            const info = await window.cobbleRealm.getAppInfo();
+
+            if (!info) {
+                return;
+            }
+
+            brandSubtitle.textContent = "Launcher officiel · v" + info.launcher;
+
+            chipMinecraft.textContent = "◇ Minecraft " + info.minecraft;
+            chipMinecraft.hidden = false;
+
+            chipFabric.textContent = "⚙ Fabric " + info.fabric;
+            chipFabric.hidden = false;
+
+            chipPack.textContent = info.pack ? "★ CobbleRealm v" + info.pack : "★ CobbleRealm";
+            chipPack.hidden = false;
+
+            document.getElementById("aboutLauncher").textContent = "v" + info.launcher;
+            document.getElementById("aboutPack").textContent = info.pack ? "v" + info.pack : "pas encore installé";
+            document.getElementById("aboutMinecraft").textContent = info.minecraft;
+            document.getElementById("aboutFabric").textContent = info.fabric;
+            document.getElementById("aboutJava").textContent = "Java " + info.java;
+
+        } catch (error) {
+
+            console.error("Erreur infos de version :", error);
+        }
+    }
+
+    /* Statut réel du serveur : jamais d'état inventé. */
+    const serverRow = document.getElementById("serverRow");
+    const serverDot = document.getElementById("serverDot");
+    const serverValue = document.getElementById("serverValue");
+    let serverTimer = null;
+
+    function showServerStatus(status) {
+
+        if (!status || !status.configured) {
+
+            serverRow.hidden = true;
+
+            return;
+        }
+
+        serverRow.hidden = false;
+        serverDot.classList.remove("offline", "error", "loading");
+        serverValue.className = "";
+
+        if (status.state === "online") {
+
+            const players = status.players;
+
+            serverValue.className = "online";
+            serverValue.textContent = players
+                ? "EN LIGNE · " + players.online + "/" + players.max + " joueurs"
+                : "EN LIGNE";
+
+        } else if (status.state === "offline") {
+
+            serverDot.classList.add("error");
+            serverValue.className = "offline";
+            serverValue.textContent = "HORS LIGNE";
+
+        } else {
+
+            serverDot.classList.add("offline");
+            serverValue.className = "unknown";
+            serverValue.textContent = "STATUT INDISPONIBLE";
+        }
+    }
+
+    async function refreshServerStatus() {
+
+        try {
+
+            showServerStatus(await window.cobbleRealm.getServerStatus());
+
+        } catch (error) {
+
+            console.error("Erreur statut serveur :", error);
+        }
+    }
+
+    function startServerStatus() {
+
+        refreshServerStatus();
+
+        clearInterval(serverTimer);
+
+        /* Toutes les 60 s, seulement quand la fenêtre est visible. */
+        serverTimer = setInterval(() => {
+
+            if (!document.hidden) {
+                refreshServerStatus();
+            }
+
+        }, 60000);
+    }
+
+    window.addEventListener("focus", refreshServerStatus);
+
+    /* Page Changelog : nouveautés du launcher (jamais de texte de remplissage). */
+    const changelogList = document.getElementById("changelogList");
+    const changelogNote = document.getElementById("changelogNote");
+
+    const CHANGELOG_STYLES = { "Nouveautés": "s-new", "Améliorations": "s-better", "Corrections": "s-fix" };
+
+    function renderChangelog(data) {
+
+        changelogList.textContent = "";
+        changelogNote.hidden = true;
+
+        const versions = data && Array.isArray(data.versions) ? data.versions : [];
+
+        if (versions.length === 0) {
+
+            const card = document.createElement("div");
+            card.className = "changelog-card changelog-loading";
+
+            const text = document.createElement("p");
+            text.textContent = "Les nouveautés ne sont pas disponibles pour le moment.";
+
+            card.appendChild(text);
+            changelogList.appendChild(card);
+
+            return;
+        }
+
+        versions.forEach((version, index) => {
+
+            const card = document.createElement("div");
+            card.className = "changelog-card";
+
+            const title = document.createElement("h2");
+            title.textContent = "Version " + version.version;
+            card.appendChild(title);
+
+            if (version.date) {
+
+                const date = document.createElement("span");
+                date.className = "changelog-date";
+                date.textContent = version.date;
+                card.appendChild(date);
+            }
+
+            if (index === 0) {
+
+                const badge = document.createElement("span");
+                badge.textContent = "Dernière version";
+                card.appendChild(badge);
+            }
+
+            for (const section of version.sections) {
+
+                const heading = document.createElement("h3");
+                heading.className = CHANGELOG_STYLES[section.title] || "";
+                heading.textContent = section.title;
+                card.appendChild(heading);
+
+                const list = document.createElement("ul");
+
+                for (const item of section.items) {
+
+                    const li = document.createElement("li");
+                    li.textContent = item;
+                    list.appendChild(li);
+                }
+
+                card.appendChild(list);
+            }
+
+            changelogList.appendChild(card);
+        });
+
+        if (data.source === "embedded" || data.source === "cache") {
+
+            changelogNote.textContent = data.source === "cache"
+                ? "Affichage de la dernière version connue (connexion indisponible)."
+                : "Affichage des nouveautés intégrées au launcher (connexion indisponible).";
+            changelogNote.hidden = false;
+        }
+    }
+
+    async function loadChangelogPage() {
+
+        try {
+
+            renderChangelog(await window.cobbleRealm.getChangelog());
+
+        } catch (error) {
+
+            console.error("Erreur changelog :", error);
+            renderChangelog(null);
+        }
+    }
+
+    if (window.cobbleRealm && window.cobbleRealm.onChangelogUpdated) {
+        window.cobbleRealm.onChangelogUpdated(renderChangelog);
+    }
+
+    /* =========================
+       ANIMATIONS : RÉGLAGE « RÉDUIRE »
+    ========================== */
+
+    const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let motionSetting = "auto";
+
+    /* "on" = réduire, "off" = animations complètes, "auto" = suit Windows */
+    function applyMotionSetting(value) {
+
+        motionSetting = ["on", "off", "auto"].includes(value) ? value : "auto";
+
+        const reduce =
+            motionSetting === "on" ||
+            (motionSetting === "auto" && motionQuery.matches);
+
+        document.documentElement.dataset.motion = reduce ? "reduce" : "full";
+    }
+
+    motionQuery.addEventListener("change", () => applyMotionSetting(motionSetting));
+
+    applyMotionSetting("auto");
+
+    /* =========================
+       ACCESSIBILITÉ : CLAVIER ET RACCOURCIS
+    ========================== */
+
+    const MENU_SHORTCUTS = { "1": homeButton, "2": changelogButton, "3": consoleButton, "4": settingsButton };
+
+    function modalIsOpen() {
+
+        return document.getElementById("microsoftModal").classList.contains("show") ||
+            document.getElementById("newsModal").classList.contains("show");
+    }
+
+    /* Le menu est accessible au clavier (Tab, Entrée, Espace) et annonce la page courante. */
+    document.querySelectorAll(".menu-item").forEach((item) => {
+
+        item.setAttribute("role", "button");
+        item.setAttribute("tabindex", "0");
+
+        item.addEventListener("keydown", (event) => {
+
+            if (event.ctrlKey || event.altKey || event.metaKey) {
+                return;
+            }
+
+            if (event.key === "Enter" || event.key === " ") {
+
+                event.preventDefault();
+                item.click();
+            }
+        });
+
+        new MutationObserver(() => {
+
+            if (item.classList.contains("active")) {
+                item.setAttribute("aria-current", "page");
+            } else {
+                item.removeAttribute("aria-current");
+            }
+
+        }).observe(item, { attributes: true, attributeFilter: ["class"] });
+    });
+
+    homeButton.setAttribute("aria-current", "page");
+
+    /* Raccourcis : Alt+1 à Alt+4 changent de page, Ctrl+Entrée lance le jeu. */
+    document.addEventListener("keydown", (event) => {
+
+        if (event.defaultPrevented || modalIsOpen()) {
+            return;
+        }
+
+        if (event.altKey && !event.ctrlKey && !event.metaKey && MENU_SHORTCUTS[event.key]) {
+
+            event.preventDefault();
+            MENU_SHORTCUTS[event.key].click();
+            MENU_SHORTCUTS[event.key].focus();
+
+            return;
+        }
+
+        if (event.ctrlKey && !event.altKey && event.key === "Enter") {
+
+            event.preventDefault();
+
+            if (!playButton.disabled) {
+                playButton.click();
+            }
+        }
+    });
+
+    /* « Lire la suite » : le focus reste dans la fenêtre tant qu'elle est ouverte. */
+    document.addEventListener("keydown", (event) => {
+
+        if (event.key === "Tab" && document.getElementById("newsModal").classList.contains("show")) {
+
+            event.preventDefault();
+            document.getElementById("newsModalClose").focus();
+        }
+    });
+
     checkMicrosoftSession();
+    refreshAppInfo();
+    startServerStatus();
+    loadChangelogPage();
     loadRamSetting();
     loadLauncherNews();
 refreshLauncherUpdateStatus();

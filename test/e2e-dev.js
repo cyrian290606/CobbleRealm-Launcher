@@ -1,0 +1,166 @@
+/*
+ * Test de bout en bout avec le VRAI Electron, en mode développement isolé (dossier de jeu, APPDATA
+ * et serveur de mise à jour jetables). Pilotage via le protocole de débogage (ports aléatoires, jamais ceux d'un autre test en cours).
+ * N'appelle jamais launchMinecraft avec une mise à jour réussie : aucune connexion Microsoft.
+ *
+ *   node test/e2e-dev.js [dossierProjet] [dossierCaptures]
+ */
+const { spawn, spawnSync } = require("child_process");
+const fs = require("fs"), path = require("path"), os = require("os"), crypto = require("crypto");
+
+const project = process.argv[2] || path.resolve(__dirname, "..");
+const shots = process.argv[3];     // dossier optionnel pour les captures d'écran
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "cr-e2e-"));
+const log = (...a) => console.log(...a);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const randomPort = () => 20000 + Math.floor(Math.random() * 20000);
+const DEBUG_PORT = randomPort();
+const SERVER_PORT = randomPort();
+const results = [];
+const check = (name, ok, detail = "") => { results.push(ok); log(`  ${ok ? "OK   " : "ECHEC"} ${name}${detail ? " — " + detail : ""}`); };
+
+(async () => {
+  /* 1. modpack de démonstration + publication réelle avec publish.js */
+  const src = path.join(tmp, "source");
+  const w = (rel, buf) => { const f = path.join(src, rel); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, buf); };
+  for (const m of ["alpha", "beta", "gamma"]) w(`mods/${m}.jar`, crypto.randomBytes(4_000_000));
+  w("config/cobblemon/main.json", '{"a":1}');
+  w("options.txt", "fov:70");
+  w("saves/monde/level.dat", "NE-DOIT-PAS-ETRE-PUBLIE");
+  const out = path.join(tmp, "publish-out");
+  const pub = spawnSync(process.execPath, [path.join(project, "tools", "publish.js"), src, "--version", "1.0.0", "--out", out],
+    { env: { ...process.env, PUBLISH_REPO_ROOT: path.join(tmp, "depot") }, encoding: "utf8" });
+  check("publish.js prépare la publication", pub.status === 0, (pub.stdout.match(/Version .*/) || [pub.stderr])[0]);
+
+  /* 2. clés de TEST (jamais de vraie clé) : le serveur signe le manifest, le launcher ne fait confiance qu'à la clé publique de test */
+  const testKeys = require(path.join(project, "tools", "keys.js")).generateKey("primary", "mot-de-passe-de-test-e2e");
+  const keyFile = path.join(tmp, "cle-de-test.key.json"), trustFile = path.join(tmp, "trusted-keys-test.json");
+  fs.writeFileSync(keyFile, JSON.stringify(testKeys.file));
+  fs.writeFileSync(trustFile, JSON.stringify({ version: 1, keys: [testKeys.entry], revoked: [] }));
+
+  /* 2b. serveur de test (débit limité pour voir la progression) */
+  const server = spawn(process.execPath, [path.join(project, "tools", "test-server.js"), out, "--port", String(SERVER_PORT), "--speed", "400", "--sign-key", keyFile],
+    { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, COBBLEREALM_KEY_PASSPHRASE: "mot-de-passe-de-test-e2e" } });
+  await new Promise((resolve) => server.stdout.on("data", (d) => String(d).includes("Serveur de test") && resolve()));
+
+  /* 3. Electron en mode développement isolé */
+  const game = path.join(tmp, "jeu"), appdata = path.join(tmp, "Roaming");
+  fs.mkdirSync(appdata, { recursive: true });
+  const electron = require(path.join(project, "node_modules", "electron"));
+  const env = { ...process.env, APPDATA: appdata, COBBLEREALM_DEV: "1", COBBLEREALM_ROOT: game, COBBLEREALM_TRUST_KEYS_FILE: trustFile,
+    COBBLEREALM_MANIFEST_URL: `http://127.0.0.1:${SERVER_PORT}/manifest.json`, ELECTRON_ENABLE_LOGGING: "1",
+    COBBLEREALM_CHANGELOG_URL: "http://127.0.0.1:1/CHANGELOG.md", COBBLEREALM_NEWS_URL: "http://127.0.0.1:1/news.json" };
+  delete env.ELECTRON_RUN_AS_NODE;
+  /* --user-data-dir isole les réglages et la session Microsoft ; COBBLEREALM_ROOT isole le dossier de jeu.
+     (APPDATA seul ne suffit PAS sous Windows : Electron lit le vrai dossier Roaming via l'API système.) */
+  const app = spawn(electron, [".", `--remote-debugging-port=${DEBUG_PORT}`, "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows", "--disable-features=CalculateNativeWinOcclusion", `--user-data-dir=${path.join(tmp, "userdata")}`], { cwd: project, env });
+  let appOut = ""; app.stdout.on("data", (d) => appOut += d); app.stderr.on("data", (d) => appOut += d);
+
+  /* 4. protocole de débogage */
+  let target = null;
+  for (let i = 0; i < 60 && !target; i++) {
+    try { target = (await (await fetch(`http://127.0.0.1:${DEBUG_PORT}/json/list`)).json()).find((t) => t.type === "page" && t.url.includes("index.html")); } catch {}
+    if (!target) await sleep(500);
+  }
+  if (!target) throw new Error("fenêtre introuvable\n" + appOut.slice(-1500));
+  const ws = new WebSocket(target.webSocketDebuggerUrl);
+  await new Promise((r) => ws.addEventListener("open", r));
+  let id = 0; const pending = new Map(); const events = [];
+  ws.addEventListener("message", (e) => { const m = JSON.parse(e.data); if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } else events.push(m); });
+  const send = (method, params = {}) => new Promise((r) => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
+  const ev = async (expression) => { const r = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }); if (r.result.exceptionDetails) throw new Error(JSON.stringify(r.result.exceptionDetails).slice(0, 300)); return r.result.result.value; };
+  const shot = async (name) => { const r = await send("Page.captureScreenshot", { format: "png" }); if (shots) fs.writeFileSync(path.join(shots, name), Buffer.from(r.result.data, "base64")); };
+  await send("Runtime.enable"); await send("Log.enable"); await send("Page.enable");
+  const waitFor = async (expr, ms = 30000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { const v = await ev(expr); if (v) return v; await sleep(250); } return null; };
+  const text = (idSel) => `document.getElementById('${idSel}').textContent.trim()`;
+
+  /* 5. démarrage : vérification en lecture seule, rien n'est installé */
+  const status = await waitFor(`(${text("launcherUpdateStatus")}).startsWith('Mise à jour disponible') && ${text("launcherUpdateStatus")}`);
+  check("statut au démarrage = mise à jour disponible avec fichiers et taille", /^Mise à jour disponible — v1\.0\.0 \(5 fichiers, \d+ Mo\)$/.test(status || ""), status);
+  await waitFor("!document.getElementById('playButton').disabled", 10000);
+  check("JOUER activé", await ev("!document.getElementById('playButton').disabled && document.getElementById('playText').textContent.trim() === 'METTRE À JOUR ET JOUER'"));
+  check("le bouton annonce clairement la mise à jour : « METTRE À JOUR ET JOUER »", (await ev("document.getElementById('playText').textContent.trim()")) === "METTRE À JOUR ET JOUER");
+  check("rien n'est installé avant le clic", !fs.existsSync(path.join(game, "lock.json")) && !fs.existsSync(path.join(game, "mods")));
+  const options = await ev("[...document.getElementById('ramSelect').options].map(o => o.value).join(',')");
+  check("sélecteur de RAM construit selon la machine", /^2,3,4/.test(options), options);
+  await shot("1-demarrage.png");
+
+  /* 6. réparation = synchronisation complète, avec progression visible */
+  /* informations sans configuration ni réseau : jamais de faux contenu */
+  check("serveur : aucune adresse configurée -> la ligne « Serveur » est masquée (plus de « EN LIGNE » écrit en dur)", await ev("document.getElementById('serverRow').hidden && !document.querySelector('.play-panel').textContent.includes('EN LIGNE')"));
+  const newsText = await ev("document.getElementById('updateCard').textContent");
+  check("annonce injoignable : texte neutre, sans faux numéro de version", /dernières nouveautés/.test(newsText) && !/V4|V5|V10/.test(newsText), newsText.slice(0, 80));
+  check("pastille du pack : pas de numéro tant que rien n'est installé", (await ev("document.getElementById('chipPack').textContent.trim()")) === "★ CobbleRealm");
+  await ev("document.getElementById('changelogButton').click()");
+  await sleep(600);
+  const cl = await ev("({ first: document.querySelector('#changelogList h2') && document.querySelector('#changelogList h2').textContent, note: document.getElementById('changelogNote').textContent, noteHidden: document.getElementById('changelogNote').hidden, text: document.getElementById('changelogList').textContent })");
+  check("changelog hors ligne : version intégrée au launcher, avec une mention claire", cl.first === `Version ${require("../package.json").version}` && !cl.noteHidden && /intégrées au launcher/.test(cl.note) && /mise à jour/i.test(cl.text), JSON.stringify([cl.first, cl.note]));
+  await ev("document.getElementById('homeButton').click()");
+
+  /* 6a. annulation pendant le téléchargement */
+  const cancelledRun = ev("window.cobbleRealm.repairInstallation()");
+  const bar1 = await waitFor("!document.getElementById('updateBarWrap').hidden", 20000);
+  const eta = await waitFor("document.getElementById('progressEta').textContent.trim()", 20000);
+  const head = await ev(text("progressTitle"));
+  check("barre de progression : pourcentage et temps restant affichés", Boolean(bar1) && /^Téléchargement\.\.\. \d+ %$/.test(head) && /^(moins d'1 min restante|≈ \d+ min restantes?)$/.test(eta || ""), head + " | " + eta);
+  const detail = await ev(text("updateDetail"));
+  check("détail : fichier, nombre de fichiers, volume et vitesse", /fichiers · .*(Ko|Mo) \/ .*(Ko|Mo) · .*\/s/.test(detail), detail);
+  await shot("4a-telechargement.png");
+  check("bouton « Annuler » actif pendant le téléchargement", await ev("!document.getElementById('cancelUpdate').disabled"));
+  await ev("document.getElementById('cancelUpdate').click()");
+  const cancelled = await cancelledRun;
+  check("annulation : la mise à jour s'arrête proprement (code CANCELLED)", cancelled && cancelled.success === false && cancelled.code === "CANCELLED", JSON.stringify(cancelled));
+  const infoShown = await waitFor("!document.getElementById('errorBox').hidden && document.getElementById('errorBox').classList.contains('info')", 10000);
+  const infoTitle = await ev(text("errorTitle"));
+  check("annulation : simple information (pas une erreur rouge) « Mise à jour annulée »", Boolean(infoShown) && infoTitle === "Mise à jour annulée", infoTitle);
+  check("annulation : barre masquée, rien d'installé, fichiers déjà reçus conservés",
+    await ev("document.getElementById('updateBarWrap').hidden") && !fs.existsSync(path.join(game, "lock.json")) && !fs.existsSync(path.join(game, "mods", "alpha.jar")) &&
+    fs.existsSync(path.join(game, ".staging")) && fs.readdirSync(path.join(game, ".staging")).length > 0);
+  await shot("4b-annule.png");
+
+  /* 6b. reprise : la réparation suivante termine l'installation */
+  const repairPromise = ev("window.cobbleRealm.repairInstallation()");
+  const sawBar = await waitFor("!document.getElementById('updateBarWrap').hidden", 20000);
+  check("après annulation, la barre repart (bouton « Annuler » de nouveau actif)", Boolean(sawBar) && await ev("!document.getElementById('cancelUpdate').disabled && document.getElementById('cancelUpdate').textContent.trim() === 'Annuler'"));
+  await shot("2-telechargement.png");
+  const repaired = await repairPromise;
+  check("réparation réussie", repaired && repaired.success === true, JSON.stringify(repaired));
+  check("fichiers installés", ["mods/alpha.jar", "mods/beta.jar", "mods/gamma.jar", "config/cobblemon/main.json", "options.txt"].every((f) => fs.existsSync(path.join(game, f))));
+  check("sauvegardes non publiées", !fs.existsSync(path.join(game, "saves")));
+  const lock = JSON.parse(fs.readFileSync(path.join(game, "lock.json"), "utf8"));
+  check("lock.json écrit (v1.0.0, 5 fichiers)", lock.version === "1.0.0" && Object.keys(lock.files).length === 5);
+  check("staging nettoyé", !fs.existsSync(path.join(game, ".staging")));
+  const after = await waitFor(`(${text("launcherUpdateStatus")}).startsWith('CobbleRealm à jour') && ${text("launcherUpdateStatus")}`, 10000);
+  check("statut après installation", after === "CobbleRealm à jour — v1.0.0", after);
+  const chipAfter = await waitFor("document.getElementById('chipPack').textContent.trim() === '★ CobbleRealm v1.0.0'", 8000);
+  check("pastille du pack : numéro réellement installé après la mise à jour (v1.0.0)", Boolean(chipAfter));
+  check("barre masquée", await ev("document.getElementById('updateBarWrap').hidden"));
+  await shot("3-a-jour.png");
+
+  /* 7. panne réseau pendant une mise à jour : le jeu ne doit PAS démarrer */
+  fs.rmSync(path.join(game, "mods", "alpha.jar"));
+  server.kill(); await sleep(500);
+  const launch = await ev("window.cobbleRealm.launchMinecraft({ ram: 4 })");
+  check("lancement refusé quand la mise à jour échoue", launch && launch.success === false && launch.step === "update", JSON.stringify(launch).slice(0, 160));
+  const errVisible = await waitFor("!document.getElementById('errorBox').hidden", 10000);
+  const errText = await ev(text("errorText"));
+  const errTitle = await ev(text("errorTitle"));
+  const buttons = await ev("[...document.querySelectorAll('#errorActions .error-button')].map(b => b.textContent.trim())");
+  check("boîte d'erreur lisible en français : titre, message, 4 boutons", Boolean(errVisible) && errTitle === "Mise à jour impossible" && /Internet/.test(errText) &&
+    JSON.stringify(buttons) === JSON.stringify(["Réessayer", "Copier le rapport", "Obtenir de l'aide"]), errTitle + " | " + errText + " | " + buttons.join(", "));
+  check("le bouton JOUER est immédiatement utilisable (plus de « ERREUR » de 3 secondes)", await ev("!document.getElementById('playButton').disabled && document.getElementById('playText').textContent.trim() === 'JOUER'"));
+  check("aucune connexion Microsoft tentée", !/microsoft-device-code/.test(JSON.stringify(events)) );
+  await shot("4-erreur.png");
+
+  /* 8. console de la page : aucune erreur (CSP, exceptions) */
+  const problems = events.filter((e) => (e.method === "Runtime.exceptionThrown") ||
+    (e.method === "Log.entryAdded" && ["error", "warning"].includes(e.params.entry.level)) ||
+    false);
+  check("aucune erreur CSP / exception dans la page", problems.length === 0, JSON.stringify(problems.map((p) => p.params.entry ? p.params.entry.text : (p.params.args || []).map((a) => a.value)).slice(0, 3)));
+  check("aucun jeton ni accès refusé dans les logs", !/Appel IPC refusé/.test(appOut));
+
+  app.kill(); server.kill(); await sleep(1500);
+  fs.rmSync(tmp, { recursive: true, force: true });
+  log(results.every(Boolean) ? "\nTout est OK" : "\nDes vérifications ont échoué");
+  process.exit(results.every(Boolean) ? 0 : 1);
+})().catch((e) => { console.error("ERREUR E2E :", e.message); process.exit(2); });

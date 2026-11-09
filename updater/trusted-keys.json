@@ -1,0 +1,17 @@
+{
+  "_aide": "Clés PUBLIQUES de confiance du launcher (jamais de clé privée ici). Rempli par : node tools/keys.js init. Voir tools/SIGNATURES.md.",
+  "version": 1,
+  "keys": [
+    {
+      "id": "76a0d12e12b40b44",
+      "role": "primary",
+      "publicKey": "2MZPQljCSC/Hp8FeOsmSggAMiy1f777z1uvUAB60CEw="
+    },
+    {
+      "id": "9ff512e49d085bfc",
+      "role": "backup",
+      "publicKey": "fmL10rZCw8KtTnKSkwbwGJk1i7KC5Wn/o3wurwgtJYo="
+    }
+  ],
+  "revoked": []
+}

@@ -16,6 +16,24 @@ contextBridge.exposeInMainWorld(
                 "microsoft-login"
             ),
 
+        /* Annule la connexion en cours (la fenêtre du code se ferme) */
+        cancelMicrosoftLogin: () =>
+            ipcRenderer.invoke(
+                "microsoft-cancel-login"
+            ),
+
+        /* Copie le code de connexion en cours dans le presse-papiers */
+        copyMicrosoftCode: () =>
+            ipcRenderer.invoke(
+                "copy-login-code"
+            ),
+
+        /* Rouvre la page Microsoft du code en cours (adresse choisie par le launcher) */
+        openMicrosoftLoginPage: () =>
+            ipcRenderer.invoke(
+                "open-microsoft-login-page"
+            ),
+
         getMicrosoftSession: () =>
             ipcRenderer.invoke(
                 "microsoft-session"
@@ -30,6 +48,7 @@ contextBridge.exposeInMainWorld(
             callback
         ) => {
 
+            /* data === null : la fenêtre de code doit se fermer */
             ipcRenderer.on(
                 "microsoft-device-code",
 
@@ -176,6 +195,97 @@ contextBridge.exposeInMainWorld(
                     callback(data);
                 }
             );
-        }
+        },
+
+
+        /* ==============================
+           MISE À JOUR DU MODPACK
+        ============================== */
+
+        /* { step, message, file, filesDone, filesTotal, bytesDone, bytesTotal, percent, speed } */
+        onUpdateProgress: (callback) => {
+            ipcRenderer.on("update-progress", (event, data) => callback(data));
+        },
+
+        /* { code, title, message, actions: ["retry","repair","copy","help","switchAccount"], canRepair } */
+        onLaunchError: (callback) => {
+            ipcRenderer.on("launch-error", (event, data) => callback(data));
+        },
+
+        /* Copie dans le presse-papiers un rapport de support sans donnée personnelle */
+        copySupportReport: () =>
+            ipcRenderer.invoke(
+                "copy-support-report"
+            ),
+
+        /* { message } : lancement hors-ligne sur la version installée */
+        onUpdateWarning: (callback) => {
+            ipcRenderer.on("update-warning", (event, data) => callback(data));
+        },
+
+        /* Informations affichées (jamais de valeur inventée) */
+        getChangelog: () =>
+            ipcRenderer.invoke(
+                "get-changelog"
+            ),
+
+        onChangelogUpdated: (callback) => {
+            ipcRenderer.on("changelog-updated", (event, data) => callback(data));
+        },
+
+        getServerStatus: () =>
+            ipcRenderer.invoke(
+                "get-server-status"
+            ),
+
+        getAppInfo: () =>
+            ipcRenderer.invoke(
+                "get-app-info"
+            ),
+
+        /* Tests uniquement : sans effet dans l'application installée (aucun gestionnaire côté principal) */
+        devResizeWindow: (width, height) =>
+            ipcRenderer.invoke(
+                "dev-resize-window",
+                width,
+                height
+            ),
+
+        /* Ouvre le dossier du jeu (adresse choisie par le launcher) */
+        openGameFolder: () =>
+            ipcRenderer.invoke(
+                "open-game-folder"
+            ),
+
+        /* Console */
+        copyConsole: () => ipcRenderer.invoke("copy-console"),
+        exportLogs: () => ipcRenderer.invoke("export-logs"),
+        clearLogs: () => ipcRenderer.invoke("clear-logs"),
+
+        /* Annule le téléchargement en cours (les fichiers déjà reçus sont conservés) */
+        cancelUpdate: () =>
+            ipcRenderer.invoke(
+                "cancel-update"
+            ),
+
+        repairInstallation: () =>
+            ipcRenderer.invoke(
+                "repair-installation"
+            ),
+
+
+        /* ==============================
+           MISE À JOUR DU LAUNCHER LUI-MÊME
+        ============================== */
+
+        /* { state: "downloading" | "ready", version } */
+        onLauncherSelfUpdate: (callback) => {
+            ipcRenderer.on("launcher-self-update", (event, data) => callback(data));
+        },
+
+        installLauncherUpdate: () =>
+            ipcRenderer.invoke(
+                "install-launcher-update"
+            )
     }
 );

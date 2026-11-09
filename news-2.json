@@ -1,0 +1,22 @@
+
+{
+  "badge": "📢 MISE À JOUR V10",
+  "title": "Bienvenue sur",
+  "titleHighlight": "CobbleRealm",
+  "version": "V10",
+  "paragraphs": [
+    [
+      {"text": "La ", "className": ""},
+      {"text": "V10", "className": "cyan"},
+      {"text": " débarque sur CobbleRealm avec de nombreuses nouveautés ! Découvrez ", "className": ""},
+      {"text": "un nouveau mod et de nouvelles animations pour le casino", "className": "green"},
+      {"text": ", ainsi que l'arrivée des ", "className": ""},
+      {"text": "combats Pokémon en 2v2 et du mode Classé", "className": "orange"},
+      {"text": " pour affronter les autres joueurs. Profitez également de ", "className": ""},
+      {"text": "nombreuses nouvelles textures", "className": "purple"},
+      {"text": " et partez relever les défis d'une ", "className": ""},
+      {"text": "toute nouvelle Tour de Combat", "className": "cyan"},
+      {"text": " !", "className": ""}
+    ]
+  ]
+}

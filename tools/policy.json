@@ -1,0 +1,125 @@
+{
+  "_aide": [
+    "Ce fichier décide ce que le launcher fait de chaque fichier du modpack. Modifiable à volonté.",
+    "Catégories : 'managed' = toujours aligné sur le serveur (écrase), 'default' = copié seulement s'il n'existe pas,",
+    "'preserved' = jamais publié, jamais touché par le launcher.",
+    "Pour chaque fichier, la PREMIÈRE règle (dans l'ordre ci-dessous) dont un motif correspond l'emporte.",
+    "Motifs : '*' = tout sauf '/', '**' = tout y compris '/', '?' = un caractère. Insensible à la casse.",
+    "Un motif sans '/' ne s'applique qu'à la racine du dossier de jeu (ex. 'options.txt'). Pour tout niveau : '**/*.log'.",
+    "Un fichier qui ne correspond à rien reçoit 'fallbackPolicy' (par défaut 'default' : jamais écrasé, c'est le plus prudent)."
+  ],
+
+  "minecraft": "1.21.1",
+  "fabricLoader": "0.18.4",
+  "java": 21,
+  "recommendedRamGb": 6,
+
+  "hosting": {
+    "repo": "cyrian290606/CobbleRealm-Pack",
+    "tagPrefix": "pack-",
+    "maxAssetsPerRelease": 900
+  },
+
+  "strictDirs": ["mods"],
+
+  "_remove": "Fichiers EXACTS à retirer chez les joueurs s'ils existent (mis en quarantaine dans .removed/, jamais supprimés définitivement). Reprend l'ancienne liste 'incompatibleMods' du launcher.",
+  "remove": [
+    "mods/seasonhud-fabric-1.21.1-1.13.8.jar",
+    "mods/ForgeConfigAPIPort-v21.1.4-1.21.1-Fabric.jar",
+    "mods/architectury-13.0.8-fabric.jar",
+    "mods/cobblemon_quests-[1.21.1]-fabric-1.1.14.jar",
+    "mods/Chunky-Fabric-1.4.23.jar.disabled",
+    "mods/academy-mc1.21.1-v2.4.1+build.550-fabric.jar.disabled",
+    "mods/bobby-5.2.4+mc1.21.jar.disabled",
+    "mods/c2me-fabric-mc1.21.1-0.3.0+alpha.0.320.jar.disabled",
+    "mods/cobblemon_spawn_alerts-fabric-1.8.2.jar.disabled",
+    "mods/cobblemountslot-1.0.1.jar.disabled",
+    "mods/worldedit-mod-7.3.8.jar.disabled"
+  ],
+
+  "fallbackPolicy": "default",
+
+  "rules": [
+    {
+      "policy": "preserved",
+      "patterns": [
+        "saves/**",
+        "screenshots/**",
+        "logs/**",
+        "crash-reports/**",
+        "backups/**",
+        "shaderpacks/**",
+        "**/*.log",
+        "**/*.disabled",
+        ".staging/**",
+        ".removed/**",
+        "runtime/**",
+        "versions/**",
+        "libraries/**",
+        "assets/**",
+        "natives/**",
+        "lock.json",
+        "version.json",
+        "launcher_profiles.json",
+        "usercache.json",
+        "usernamecache.json",
+        "realms_persistence.json",
+
+        "config/impactor/economy/**",
+        "config/worldedit/sessions/**",
+        "config/voicechat/username-cache.json",
+        "config/academy/gym_caches.json",
+        "config/corgilib/announcement_store.json",
+        "config/MythsAndLegends/cooldowns.json",
+        "config/MythsAndLegends/debts.json",
+        "config/resourceful-config-web.json",
+        "fancymenu_data/last_world.fmdata",
+        "lootables_uses.json",
+        "data/fabricDefaultResourcePacks.dat"
+      ]
+    },
+    {
+      "policy": "default",
+      "patterns": [
+        "options.txt",
+        "optionsof.txt",
+        "servers.dat",
+        "servers.dat_old",
+        "config/sodium-options.json",
+        "config/iris.properties",
+        "config/xaero*/**",
+        "config/journeymap/**",
+        "config/jade/**",
+        "config/emi.css",
+
+        "config/voicechat/**",
+        "config/defaultoptions/**",
+        "config/fzzy_config/keybinds.toml",
+        "config/**/keybinds*",
+        "config/**/client.*",
+        "config/**/*-client.*",
+        "config/**/*_client.*",
+        "cobblenav/settings/**",
+        "cobblemon/riding_perspectives.json",
+        "emi.json",
+        "polymer/**"
+      ]
+    },
+    {
+      "policy": "managed",
+      "patterns": [
+        "mods/**",
+        "config/**",
+        "defaultconfigs/**",
+        "resourcepacks/**",
+        "datapacks/**",
+        "global_packs/**",
+        "scripts/**",
+        "fancymenu_data/**",
+        "slideshow/**",
+        "showdown/**",
+        "codex/**"
+      ]
+    }
+  ]
+}

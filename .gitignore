@@ -1,0 +1,9 @@
+node_modules/
+dist/
+build-out/
+*.tmp
+*.zip
+publish-out/
+*.key.json
+keys/
+*.pem
