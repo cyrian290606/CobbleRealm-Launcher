@@ -1,0 +1,4 @@
+# Aucune conversion de fin de ligne ni de contenu, nulle part :
+# la signature du manifest porte sur ses OCTETS EXACTS, un seul caractère modifié la rend invalide.
+* -text
+* binary

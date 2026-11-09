@@ -17,6 +17,12 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
+/* --pack <dossier> : dépôt local CobbleRealm-Pack (docs/, manifests/, publish-out/ y sont écrits). Doit être lu AVANT REPO_ROOT. */
+if (require.main === module) {
+    const packIndex = process.argv.indexOf("--pack");
+    if (packIndex >= 0 && process.argv[packIndex + 1] && !process.argv[packIndex + 1].startsWith("--")) process.env.PUBLISH_REPO_ROOT = process.argv[packIndex + 1];
+}
+
 /* PUBLISH_REPO_ROOT : réservé aux tests (évite d'écrire dans le vrai dépôt). */
 const REPO_ROOT = process.env.PUBLISH_REPO_ROOT
     ? path.resolve(process.env.PUBLISH_REPO_ROOT)
@@ -528,33 +534,22 @@ function writeUploadGuide(outDir, manifest, newAssets, policy, channel, existing
         const exists = existingTags.includes(tag);
 
         text += `### Release \`${tag}\` - ${count} fichier(s) à ${exists ? "AJOUTER à la release existante" : "envoyer (nouvelle release)"}${prerelease}\n\n`;
-
-        if (exists) {
-            text += `1. https://github.com/${repo}/releases/tag/${tag} puis « Edit » (crayon).\n`;
-            text += `2. Glisser-déposer TOUT le contenu du dossier \`release-${tag}\` dans « Attach binaries », puis « Update release ». Ne rien supprimer : les anciens fichiers restent utilisés par les joueurs.\n\n`;
-            text += "Avec le CLI `gh`, en PowerShell :\n\n```powershell\n";
-            text += `gh release upload ${tag} --repo ${repo} (Get-ChildItem "release-${tag}").FullName\n`;
-            text += "```\n\n";
-        } else {
-            text += `1. https://github.com/${repo}/releases/new\n`;
-            text += `2. Tag : \`${tag}\` (Create new tag on publish) - titre libre.\n`;
-            text += `3. Glisser-déposer TOUT le contenu du dossier \`release-${tag}\` dans la zone « Attach binaries ».\n`;
-            text += "4. Attendre la fin des envois, puis « Publish release ».\n\n";
-            text += "Avec le CLI `gh` (si installé), en PowerShell :\n\n```powershell\n";
-            text += `gh release create ${tag} --repo ${repo} --title "${tag}" --notes "Fichiers du modpack"` +
-                `${channel === "stable" ? "" : " --prerelease"} (Get-ChildItem "release-${tag}").FullName\n`;
-            text += "```\n\n";
-        }
+        text += "Avec le CLI GitHub (`gh auth login` une seule fois), depuis le dossier du dépôt launcher :\n\n```powershell\n";
+        text += `node tools/upload-release.js "${path.join(outDir, `release-${tag}`)}" --tag ${tag} --repo ${repo}${exists ? "" : " --create"}\n`;
+        text += "```\n\n";
+        text += "L'outil envoie par lots, **reprend là où il s'est arrêté** si tu le relances, ne renvoie jamais un fichier déjà en ligne, n'écrase et ne supprime rien, et vérifie les tailles à la fin. " +
+            "Ne supprime jamais de fichier d'une release : les anciennes versions du modpack en ont besoin.\n\n";
     }
 
-    text += "## Étape 2 - Vérifier que tout est en ligne\n\n";
-    text += "```\nnode tools/publish.js --check publish-out/" + pagesPath + "\n```\n\n";
-    text += "Ne passez à l'étape 3 que si le résultat est « Toutes les URL répondent ».\n\n";
+    text += "## Étape 2 - Vérifier que tout est en ligne et que la signature est valide\n\n";
+    text += "```powershell\nnode tools/publish.js --check \"" + path.join(outDir, pagesPath) + "\"\n```\n\n";
+    text += "Ne passe à l'étape 3 que si le résultat est « Signature valide » puis « Toutes les URL répondent ».\n\n";
     text += "## Étape 3 - Publier le manifest (GitHub Pages)\n\n";
-    text += `Copier \`publish-out/${pagesPath}\` ET \`publish-out/${pagesPath}.sig\` (la signature : sans elle, les launchers refusent le manifest) vers \`${pagesPath}\` et \`${pagesPath}.sig\` du dépôt, commit, push. `;
-    text += "Les launchers voient la nouvelle version après 1 à 2 minutes.\n\n";
+    text += `Le manifest ET sa signature doivent partir ensemble : \`${pagesPath}\` et \`${pagesPath}.sig\` (sans signature, les launchers refusent le manifest). ` +
+        "Avec `--write-docs` ils sont déjà copiés dans `docs/` du dépôt Pack : fais `git add docs manifests`, `git commit`, `git push`. ";
+    text += "Les launchers voient la nouvelle version après 1 à 2 minutes. Contrôle ensuite la version EN LIGNE : `node tools/publish.js --check https://cyrian290606.github.io/CobbleRealm-Pack/manifest.json --signature-only`.\n\n";
     text += "## Retour arrière\n\n";
-    text += "Remettre dans `" + pagesPath + "` un ancien manifest de `manifests/`. Les anciens fichiers restent en ligne.\n";
+    text += "Remettre dans `" + pagesPath + "` un ancien `manifests/manifest-X.json` ET son `.sig` (renommés manifest.json et manifest.json.sig). Les anciens fichiers restent en ligne.\n";
 
     fs.writeFileSync(path.join(outDir, "UPLOAD.md"), text, "utf8");
 }
@@ -582,7 +577,36 @@ function parseArgs(argv) {
 
 const mb = (bytes) => `${(bytes / 1048576).toFixed(1)} Mo`;
 
-async function runCheck(target) {
+/* Vérifie la signature du manifest (octets exacts) avec les clés de confiance du launcher. Retourne un message d'erreur ou null. */
+async function checkSignature(target) {
+
+    const { verifyManifestSignature, loadTrustedKeys } = require("../updater/signature.js");
+    let bytes, sig = null;
+
+    if (/^https?:\/\//.test(target)) {
+        bytes = Buffer.from(await (await fetch(`${target}?t=${Date.now()}`)).arrayBuffer());
+        const response = await fetch(`${target}.sig?t=${Date.now()}`);
+        if (response.ok) { try { sig = await response.json(); } catch { sig = null; } }
+    } else {
+        bytes = fs.readFileSync(target);
+        try { sig = JSON.parse(fs.readFileSync(`${target}.sig`, "utf8")); } catch { sig = null; }
+    }
+
+    try {
+        const result = verifyManifestSignature(bytes, sig, loadTrustedKeys(process.env.COBBLEREALM_TRUST_FILE || undefined));
+        console.log(`Signature valide (clé ${result.keyId}, ${result.role}).`);
+        return null;
+    } catch (error) {
+        return `SIGNATURE REFUSÉE : ${error.message}`;
+    }
+}
+
+async function runCheck(target, { signatureOnly = false } = {}) {
+
+    const signatureProblem = await checkSignature(target);
+
+    if (signatureProblem) { console.error(signatureProblem + "\nLes launchers refuseraient ce manifest."); return 1; }
+    if (signatureOnly) return 0;
 
     let manifest;
 
@@ -613,7 +637,7 @@ async function main(argv) {
 
     const args = parseArgs(argv);
 
-    if (args.check) return runCheck(args.check === true ? args._[0] : args.check);
+    if (args.check) return runCheck(args.check === true ? args._[0] : args.check, { signatureOnly: !!args["signature-only"] });
 
     const sourceDir = args._[0] && path.resolve(args._[0]);
 
@@ -621,7 +645,8 @@ async function main(argv) {
         console.error("Usage : node tools/publish.js <dossierSource> --version x.y.z " +
             "[--channel beta] [--out publish-out] [--dry-run] [--write-docs] [--check-urls] " +
             "[--no-reuse] [--no-bundles] [--allow-empty-mods] [--force] [--sign <clé.key.json>]\n" +
-            "        node tools/publish.js --check <manifest.json | URL>");
+            "        node tools/publish.js --check <manifest.json | URL> [--signature-only]\n" +
+            "        (--pack <dossier du dépôt CobbleRealm-Pack> : y écrit docs/, manifests/ et publish-out/)");
         return 2;
     }
 
@@ -731,7 +756,8 @@ async function main(argv) {
         const target = path.join(REPO_ROOT, pagesRel);
         fs.mkdirSync(path.dirname(target), { recursive: true });
         fs.writeFileSync(target, manifestText, "utf8");
-        console.log(`Manifest copié dans ${pagesRel}`);
+        if (signed) fs.copyFileSync(path.join(outDir, pagesRel + ".sig"), target + ".sig");
+        console.log(`Manifest${signed ? " et signature" : ""} copié${signed ? "s" : ""} dans ${pagesRel}`);
     }
 
     console.log(`Prêt : ${outDir}\nSuivre les étapes de ${path.join(outDir, "UPLOAD.md")}`);

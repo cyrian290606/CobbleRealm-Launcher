@@ -262,7 +262,7 @@ const DEV_MODE =
 
 const COBBLEREALM_MANIFEST_URL =
     (DEV_MODE && process.env.COBBLEREALM_MANIFEST_URL) ||
-    "https://cyrian290606.github.io/CobbleRealm-Launcher/manifest.json";
+    "https://cyrian290606.github.io/CobbleRealm-Pack/manifest.json";
 
 /*
  * Signature du manifest : OBLIGATOIRE dans l'application installée. Seul le mode développement isolé (jamais l'installée)

@@ -1,0 +1,8 @@
+# Dossier de préparation des envois (3 Go de fichiers : jamais dans Git, ils vont dans les Releases)
+publish-out/
+
+# Sécurité : jamais de clé ni de secret
+*.key.json
+*.pem
+keys/
+.env

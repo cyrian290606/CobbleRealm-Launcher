@@ -28,6 +28,7 @@ Launcher Electron (Windows uniquement, UI et logs en français) pour le modpack 
 - `npm run release` : build + publication sur GitHub Releases (variable `GH_TOKEN` requise) pour l'auto-update.
 - `node tools/publish.js <dossierSource> --version x.y.z` : prépare une publication du modpack (manifest v2 + fichiers nommés par leur SHA-256 + `UPLOAD.md`). Ne publie rien, n'écrit jamais dans le dossier source. `--dry-run` simule ; `--check <manifest>` vérifie que les URL répondent.
 - `node tools/keys.js init --dir <dossier HORS dépôt>` : génère la clé de signature principale + la clé de secours (clés privées chiffrées, jamais dans le dépôt). `node tools/publish.js ... --sign <clé.key.json>` signe le manifest. Procédure (sauvegarde, rotation, perte, vol) : [tools/SIGNATURES.md](tools/SIGNATURES.md).
+- `node tools/pack-prepare.js <dossier>` : prépare en LOCAL le dépôt CobbleRealm-Pack (modèle `tools/pack-repo/`, Git local sans dépôt distant). `node tools/publish.js ... --pack <dépôt Pack> --sign <clé> --write-docs` y écrit `docs/` (manifest + signature), `manifests/` et `publish-out/`. `node tools/upload-release.js <release-...> --tag pack-files-1 --repo <owner/repo> [--create]` envoie par lots, avec reprise, sans jamais rien écraser ni supprimer. Guide complet : [tools/GITHUB-SETUP.md](tools/GITHUB-SETUP.md). **Ne jamais exécuter `git push`, `upload-release` sans `--dry-run` ni `npm run release` sans demande explicite de l'utilisateur.**
 - `node tools/test-server.js <publish-out> [--port 8787] [--speed Ko/s] [--cut-after octets]` : serveur local pour répéter une mise à jour.
 - `node test/e2e-dev.js` : test de bout en bout avec le vrai Electron en mode développement isolé (ouvre une fenêtre).
 - Pas de linter ni de bundler (JS CommonJS brut).
@@ -91,7 +92,7 @@ Fenêtre → news → `updater.check()` (lecture seule, rien n'est téléchargé
 - Le nom du paquet (`cobblerealm-launcher`) et l'`appId` ne doivent PAS changer : le dossier `userData` (réglages, session Microsoft) et la mise à jour en place de l'installeur en dépendent.
 - Tout le jeu vit dans `%APPDATA%/.cobblerealm`. Réglages du launcher dans `userData/settings.json`, RAM bornée par `clampRam` (2 Go min, max = RAM système − 2 Go, plafonné à 16).
 - Les logs MCLC contiennent des tokens : toujours passer par `redactSecrets()` avant console/IPC, et `safeSend()` pour envoyer au renderer.
-- Le manifest v2 est servi par GitHub Pages (`/docs`) ; les fichiers sont des assets de GitHub Releases du dépôt `cyrian290606/CobbleRealm-Pack` (à créer, voir `policy.json` > `hosting`). Les releases du launcher sont dans `CobbleRealm-Launcher`.
+- Le manifest v2 (+ `manifest.json.sig`) est servi par GitHub Pages du dépôt `cyrian290606/CobbleRealm-Pack` (`/docs`, adresse `https://cyrian290606.github.io/CobbleRealm-Pack/manifest.json`) ; les fichiers sont des assets de GitHub Releases du même dépôt (à créer, voir `policy.json` > `hosting` et `tools/GITHUB-SETUP.md`). Le dépôt `CobbleRealm-Launcher` n'héberge plus le manifest. Les releases du launcher sont dans `CobbleRealm-Launcher`.
 - Domaines autorisés pour les téléchargements : `github.com`, `*.githubusercontent.com` (redirections incluses) ; manifest : + `cyrian290606.github.io` ; Java : `api.adoptium.net` ; Fabric : `meta.fabricmc.net`.
 
 ### Incohérences connues
