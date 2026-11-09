@@ -14,7 +14,7 @@ Ce fichier présente, version après version, ce qui change pour les joueurs.
 - Nouveau bouton « Réessayer » quand une mise à jour échoue.
 - Suivi du téléchargement plus complet : barre de progression, fichier en cours, nombre de fichiers et vitesse.
 - Si tu n'as pas de connexion Internet, tu peux lancer la version déjà installée (avec un avertissement).
-- Le launcher se met désormais à jour tout seul.
+- Le launcher se met désormais à jour tout seul. Quand une nouvelle version est prête, « Redémarrer maintenant » l'installe sans fenêtre d'installation à valider, puis le relance.
 - La page Changelog affiche maintenant les vraies nouveautés du launcher, mises à jour en ligne sans avoir à réinstaller. Sans connexion, la dernière version connue ou celle intégrée au launcher s'affiche.
 - La page Paramètres est complète : mémoire (RAM) avec la valeur recommandée mise en avant et un avertissement utile, ouverture du dossier du jeu, réparation de l'installation en un clic, taille de l'interface, rappel des raccourcis clavier et informations de version.
 - Le launcher peut se réduire pendant que tu joues et revient tout seul quand Minecraft se ferme (réglage « Pendant la partie »).

@@ -9,6 +9,7 @@
  */
 
 const https = require("https");
+const zlib = require("zlib");
 const http = require("http");
 const { forbiddenHostError } = require("./errors");
 
@@ -134,7 +135,7 @@ async function getJson(urlString, options = {}) {
 async function getBuffer(urlString, options = {}) {
 
     const maxBytes = options.maxBytes || 10 * 1024 * 1024;
-    const response = await request(urlString, options);
+    const response = await request(urlString, { ...options, headers: { "Accept-Encoding": "gzip", ...(options.headers || {}) } });
     const chunks = [];
     let total = 0;
 
@@ -147,7 +148,16 @@ async function getBuffer(urlString, options = {}) {
         chunks.push(chunk);
     }
 
-    return Buffer.concat(chunks);
+    const raw = Buffer.concat(chunks);
+
+    if (String(response.headers["content-encoding"] || "").toLowerCase() !== "gzip") return raw;
+
+    /* Décompression bornée (jamais plus de maxBytes une fois décompressé : protège d'une « bombe » de décompression). */
+    try {
+        return zlib.gunzipSync(raw, { maxOutputLength: maxBytes });
+    } catch (error) {
+        throw Object.assign(new Error("réponse compressée invalide ou trop volumineuse"), { httpStatus: error.code === "ERR_BUFFER_TOO_LARGE" ? 413 : 502 });
+    }
 }
 
 module.exports = { request, getJson, getBuffer, checkUrl, isHostAllowed };

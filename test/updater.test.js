@@ -203,6 +203,30 @@ test(".properties redaté par le jeu : aucun retéléchargement ; un vrai change
     assert.strictEqual((await env.updater().sync()).downloaded, 1);
 }));
 
+test("Manifest compressé (gzip, comme GitHub Pages) : lu normalement, signature vérifiée sur les octets DÉCOMPRESSÉS ; une bombe de décompression est refusée", () => withEnv(async (env) => {
+    const sig = require("../updater/signature");
+    const keys = require("../tools/keys");
+    const generated = keys.generateKey("primary", "mot-de-passe-de-test-123");
+    const priv = sig.decryptPrivateKey(generated.file, "mot-de-passe-de-test-123");
+    env.srv.state.faults.gzipManifest = true;
+    env.srv.state.signer = (bytes) => sig.signBytes(bytes, priv);
+    env.publish(V1(), "1.0.0");
+
+    const raw = Buffer.from(JSON.stringify(env.srv.state.manifest)).length;
+    const signed = env.updater({ requireSignature: true, trustedKeys: sig.parseTrustedKeys({ keys: [generated.entry], revoked: [] }) });
+    const r = await signed.sync();
+    assert.ok(r.ok, "installation depuis un manifest compressé et signé");
+    assert.ok(raw > 0);
+
+    /* octets reçus compressés : bien plus petits que le manifest décompressé (preuve que gzip est utilisé) */
+    const { getBuffer } = require("../updater/http");
+    const got = await getBuffer(`${env.base}/manifest.json`, { allowLocal: true });
+    assert.strictEqual(got.length, raw, "le manifest est rendu décompressé, octet pour octet");
+
+    /* bombe : une réponse qui se décompresse en plus que la limite est refusée */
+    await assert.rejects(getBuffer(`${env.base}/manifest.json`, { allowLocal: true, maxBytes: 100 }), (e) => e.httpStatus === 413);
+}));
+
 /* ---------------- migration ---------------- */
 
 test("Migration d'une installation existante sans lock.json (aucun retéléchargement inutile)", () => withEnv(async (env) => {

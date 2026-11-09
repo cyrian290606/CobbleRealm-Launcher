@@ -73,6 +73,12 @@ function createTestServer({ manifest = null, blobs = new Map(), faults = {}, sig
 
         if (pathname === "/manifest.json") {
             const body = Buffer.from(JSON.stringify(state.manifest));
+            /* GitHub Pages sert le manifest compressé (gzip) : même comportement ici quand le client le demande. */
+            if (state.faults.gzipManifest && /gzip/.test(req.headers["accept-encoding"] || "")) {
+                const packed = require("zlib").gzipSync(body);
+                res.writeHead(200, { "Content-Type": "application/json", "Content-Encoding": "gzip", "Content-Length": packed.length });
+                return res.end(packed);
+            }
             res.writeHead(200, { "Content-Type": "application/json", "Content-Length": body.length });
             return res.end(body);
         }

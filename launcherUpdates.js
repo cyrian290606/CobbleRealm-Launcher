@@ -32,7 +32,9 @@ function initLauncherUpdates({ app, notify, log = console }) {
     autoUpdater.checkForUpdates().catch(() => {});
 
     return {
-        installNow: () => autoUpdater.quitAndInstall(false, true)
+        /* Installation SILENCIEUSE puis relance automatique : sans ça, l'installeur s'affiche en assistant (étapes à cliquer)
+           et reste ouvert tant que le joueur n'a pas répondu. */
+        installNow: () => autoUpdater.quitAndInstall(true, true)
     };
 }
 

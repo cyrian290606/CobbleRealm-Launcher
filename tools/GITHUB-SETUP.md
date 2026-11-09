@@ -129,3 +129,23 @@ Dans `D:\CobbleRealm-Pack` : remplacer `docs/manifest.json` et `docs/manifest.js
 | Le launcher affiche « Le serveur de mise à jour est momentanément inaccessible » | GitHub Pages pas encore actif (étape 4) ou manifest pas encore poussé (étape 8) |
 | `upload-release` s'arrête avec « 502 » | GitHub limite le débit : relancer la même commande plus tard |
 | `publish.js` refuse « est aussi publié » | un des 3 anciens mods en double est dans le dossier source |
+
+## Publier le launcher lui-même (mise à jour automatique des joueurs)
+
+Le launcher se met à jour via les Releases du dépôt `CobbleRealm-Launcher` (electron-updater). Il lit la **dernière release non pré-version**, y cherche `latest.yml`, compare la version, télécharge l'installeur (par différences grâce au `.blockmap`) et l'installe à la fermeture ou au clic sur « Redémarrer maintenant » (installation silencieuse, puis relance).
+
+**Pièges à connaître (vérifiés) :**
+
+- La « dernière release » est la **plus récente par date**. Aujourd'hui c'est une ancienne release du modpack (`v10`, sans `latest.yml`) : tant qu'une release du launcher n'est pas publiée après elle, la vérification échoue en silence (aucun joueur ne le voit, mais aucune mise à jour n'arrive).
+- **Ne jamais créer de release « modpack » dans `CobbleRealm-Launcher` après une release du launcher** : elle deviendrait la « dernière » et casserait les mises à jour du launcher pour tous les joueurs. Les fichiers du modpack vont dans `CobbleRealm-Pack`. Si l'ancien système (launchers 1.0.x) doit encore être alimenté, ses releases doivent être marquées **pre-release** (elles sont alors ignorées).
+- Les versions du launcher suivent `package.json` (`2.0.0`, `2.0.1`...) et le tag de la release doit être `v2.0.0`, `v2.0.1`...
+
+**Procédure (avec ton autorisation à chaque étape) :**
+
+1. Mettre `version` à jour dans `package.json` et une nouvelle section dans `CHANGELOG.md`.
+2. `npm test` doit être entièrement vert.
+3. Avec `GH_TOKEN` défini (jeton ayant la permission « Contents: write » sur `CobbleRealm-Launcher` seulement) : `npm run release`. La release est créée en **brouillon** (`draft`) : personne ne la voit.
+4. Sur GitHub (Releases → brouillon), vérifier la présence de `CobbleRealm-Launcher-Setup.exe`, de `CobbleRealm-Launcher-Setup.exe.blockmap` et de `latest.yml`, puis **Publier**.
+5. Vérifier : `node -e "fetch('https://github.com/cyrian290606/CobbleRealm-Launcher/releases/latest/download/latest.yml').then(r=>r.text()).then(console.log)"` doit afficher la nouvelle version.
+
+**Nouveau joueur :** il télécharge `CobbleRealm-Launcher-Setup.exe` depuis la page de la release (Windows SmartScreen affichera un avertissement tant que l'installeur n'est pas signé avec un certificat : « Informations complémentaires » puis « Exécuter quand même »).
