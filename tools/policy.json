@@ -69,6 +69,10 @@
         "config/worldedit/sessions/**",
         "config/voicechat/username-cache.json",
         "config/academy/gym_caches.json",
+        "config/corgilib/announcement_store.json",
+        "config/MythsAndLegends/cooldowns.json",
+        "config/MythsAndLegends/debts.json",
+        "config/resourceful-config-web.json",
         "fancymenu_data/last_world.fmdata",
         "lootables_uses.json",
         "data/fabricDefaultResourcePacks.dat"

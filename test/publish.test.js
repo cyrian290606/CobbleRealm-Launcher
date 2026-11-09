@@ -83,7 +83,9 @@ test("Fichiers PERSONNELS : jamais publiés (preserved) ou jamais écrasés (def
 
     /* données d'un joueur précis ou caches : jamais publiés */
     for (const p of ["config/impactor/economy/accounts/users/1e/1e2d3c4b-5a69-4788-9a0b-c1d2e3f40516.conf", "config/worldedit/sessions/a9b8c7d6-e5f4-4a3b-8c2d-1e0f9a8b7c6d.json",
-        "config/voicechat/username-cache.json", "config/academy/gym_caches.json", "fancymenu_data/last_world.fmdata"]) assert.strictEqual(c(p), "preserved", p);
+        "config/voicechat/username-cache.json", "config/academy/gym_caches.json", "fancymenu_data/last_world.fmdata",
+        "config/corgilib/announcement_store.json", "config/MythsAndLegends/cooldowns.json", "config/MythsAndLegends/debts.json", "config/resourceful-config-web.json"]) assert.strictEqual(c(p), "preserved", p);
+    assert.strictEqual(c("config/MythsAndLegends/config.toml"), "managed", "la vraie configuration du mod reste gérée");
 
     /* réglages du joueur (côté client) : copiés une fois, jamais écrasés */
     for (const p of ["config/voicechat/voicechat-volumes.properties", "config/exposure-client.toml", "config/mod/sub/x_client.json", "config/mod/client.json",
